@@ -29,6 +29,17 @@ export function generateShareURL(data: AppData): string {
   return `${base}?g=${encoded}`;
 }
 
+export function generateGroupSetupURL(data: AppData): string {
+  const json = JSON.stringify({
+    groupName: data.groupName,
+    currency: data.currency,
+    members: data.members,
+  });
+  const encoded = LZString.compressToEncodedURIComponent(json);
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?g=${encoded}`;
+}
+
 export function getSharedGroupFromURL(): AppData | null {
   const params = new URLSearchParams(window.location.search);
   const g = params.get('g');

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AppData } from '../types';
-import { generateShareURL } from '../utils/share';
+import { generateShareURL, generateGroupSetupURL } from '../utils/share';
 
 interface Props {
   data: AppData;
@@ -9,9 +9,10 @@ interface Props {
 
 export default function ShareModal({ data, onClose }: Props) {
   const url = generateShareURL(data);
+  const setupUrl = generateGroupSetupURL(data);
   const [copied, setCopied] = useState(false);
 
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&ecc=L&data=${encodeURIComponent(setupUrl)}`;
 
   async function handleCopy() {
     await navigator.clipboard.writeText(url);
@@ -54,7 +55,7 @@ export default function ShareModal({ data, onClose }: Props) {
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             </div>
-            <p className="text-xs text-ink-muted">スキャンしてグループに参加</p>
+            <p className="text-xs text-ink-muted">スキャンしてグループに参加（メンバー情報のみ）</p>
           </div>
 
           {/* URL */}
@@ -67,7 +68,7 @@ export default function ShareModal({ data, onClose }: Props) {
           <div className="bg-amber-50 rounded-xl p-3 mb-4 flex gap-2">
             <span className="text-base flex-shrink-0">💡</span>
             <p className="text-xs text-amber-800 leading-relaxed">
-              URLを開くとグループのデータ（メンバー・支払い・精算）をインポートできます。データはURLに含まれているためサーバー不要です。
+              QRコードはメンバー情報のみを含みます。支払い履歴も含めて共有するには「URLをコピー」をご利用ください。データはURLに含まれているためサーバー不要です。
             </p>
           </div>
 
