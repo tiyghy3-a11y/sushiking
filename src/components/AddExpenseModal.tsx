@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Member, Expense, CategoryKey } from '../types';
 import { CATEGORIES } from '../types';
+import { scanReceipt } from '../utils/receipt';
 
 interface Props {
   members: Member[];
@@ -22,11 +23,59 @@ export default function AddExpenseModal({ members, expense, onSave, onDelete, on
   const [date, setDate] = useState(expense?.date ?? today);
   const [category, setCategory] = useState<CategoryKey>(expense?.category ?? 'food');
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!expense) {
       setSplitAmong(members.map(m => m.id));
     }
   }, [members, expense]);
+
+  async function handleReceiptSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // 同じファイルを再選択しても発火するようにリセット
+    e.target.value = '';
+    if (!file) return;
+
+    setScanning(true);
+    setScanProgress(0);
+    setScanMessage(null);
+    setScanError(null);
+
+    try {
+      const result = await scanReceipt(file, p => setScanProgress(p));
+
+      const filled: string[] = [];
+      if (result.amount !== null) {
+        setAmount(String(result.amount));
+        filled.push('金額');
+      }
+      if (result.date) {
+        setDate(result.date);
+        filled.push('日付');
+      }
+      // 内容が未入力の場合のみ、読み取った店名などで補完
+      if (result.title && !title.trim()) {
+        setTitle(result.title);
+        filled.push('内容');
+      }
+
+      if (filled.length > 0) {
+        setScanMessage(`${filled.join('・')}を読み取りました。内容をご確認ください。`);
+      } else {
+        setScanError('うまく読み取れませんでした。手動で入力してください。');
+      }
+    } catch (err) {
+      console.error('レシートの読み取りに失敗しました', err);
+      setScanError('読み取りに失敗しました。もう一度お試しください。');
+    } finally {
+      setScanning(false);
+    }
+  }
 
   function toggleSplit(id: string) {
     setSplitAmong(prev =>
@@ -62,6 +111,45 @@ export default function AddExpenseModal({ members, expense, onSave, onDelete, on
             <button onClick={onClose} className="text-ink-muted text-2xl leading-none active:opacity-70 w-8 h-8 flex items-center justify-center">
               ×
             </button>
+          </div>
+
+          {/* Receipt scan */}
+          <div className="mb-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleReceiptSelected}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={scanning}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-primary/40 bg-primary-50 text-primary font-semibold active:scale-95 transition-transform disabled:opacity-60"
+            >
+              {scanning ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  <span>読み取り中… {Math.round(scanProgress * 100)}%</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-lg">📷</span>
+                  <span>レシートを撮影して読み取り</span>
+                </>
+              )}
+            </button>
+            {scanMessage && (
+              <p className="text-xs text-green-600 mt-2 flex items-start gap-1">
+                <span>✓</span>
+                <span>{scanMessage}</span>
+              </p>
+            )}
+            {scanError && (
+              <p className="text-xs text-red-500 mt-2">{scanError}</p>
+            )}
           </div>
 
           {/* Category */}
