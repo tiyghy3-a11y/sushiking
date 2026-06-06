@@ -41,4 +41,6 @@ export interface AppData {
   currency: string;
   members: Member[];
   expenses: Expense[];
+  /** クラウド同期に使うグループID。共有して同期を有効にすると付与される。 */
+  syncId?: string;
 }
