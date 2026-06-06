@@ -11,13 +11,13 @@ export interface ReceiptResult {
   rawText: string;
 }
 
-/** 全角数字・記号を半角に変換する */
-function toHalfWidth(s: string): string {
-  return s
-    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
-    .replace(/，/g, ',')
-    .replace(/．/g, '.')
-    .replace(/￥/g, '¥');
+/**
+ * OCRテキストを正規化する。
+ * NFKC で全角数字・記号を半角に、半角カタカナを全角カタカナ（濁点も合成）へ
+ * 変換することで、レシート特有の文字化け（ｽｼｷﾝｸﾞ → スシキング、ｶﾞ → ガ など）を解消する。
+ */
+function normalize(s: string): string {
+  return s.normalize('NFKC');
 }
 
 /** 合計を示すキーワード（優先度の高い順） */
@@ -104,23 +104,56 @@ function parseDate(text: string): string | null {
   return null;
 }
 
+/** 意味のある文字（ひらがな・カタカナ・漢字・英字・数字）にマッチ */
+const MEANINGFUL_CHAR = /[぀-ゟ゠-ヿ㐀-鿿 a-zA-Z0-9]/u;
+/** 漢字・かな（CJK）にマッチ。文字間に挿入された空白の除去判定に使う */
+const CJK_CHAR = '぀-ゟ゠-ヿ㐀-鿿';
+
+/**
+ * 内容候補の文字列を整える。
+ * - 漢字・かなの間に OCR が挿入しがちな空白を除去（ス シ キ ン グ → スシキング）
+ * - 連続する空白を 1 つにまとめる
+ * - 先頭・末尾の記号ノイズを削る
+ */
+function cleanTitle(s: string): string {
+  return s
+    .replace(new RegExp(`([${CJK_CHAR}])\\s+(?=[${CJK_CHAR}])`, 'gu'), '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[^぀-ゟ゠-ヿ㐀-鿿a-zA-Z0-9]+/u, '')
+    .replace(/[^぀-ゟ゠-ヿ㐀-鿿a-zA-Z0-9)）」』】］]+$/u, '')
+    .trim();
+}
+
+/**
+ * 文字化けしている（記号・ノイズが多すぎる）行かどうかを判定する。
+ * 空白を除いた文字のうち、意味のある文字の割合が低いものを化けとみなす。
+ */
+function looksGarbled(s: string): boolean {
+  const chars = [...s].filter(c => !/\s/.test(c));
+  if (chars.length < 2) return true;
+  const meaningful = chars.filter(c => MEANINGFUL_CHAR.test(c)).length;
+  return meaningful / chars.length < 0.6;
+}
+
 /** OCRテキストから店名などの内容候補を推定する */
 function parseTitle(lines: string[]): string | null {
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.length < 2) continue;
+    const cleaned = cleanTitle(line);
+    if (cleaned.length < 2) continue;
     // 数字・記号だけの行はスキップ
-    if (!/[^\d\s¥$.,:\-/円*#]/.test(trimmed)) continue;
+    if (!/[^\d\s¥$.,:\-/円*#]/.test(cleaned)) continue;
     // レシートでよくある定型句はスキップ
-    if (/領収|レシート|receipt|ありがとう|いらっしゃ|登録番号|TEL|電話/i.test(trimmed)) continue;
-    return trimmed.slice(0, 30);
+    if (/領収|レシート|receipt|ありがとう|いらっしゃ|登録番号|TEL|電話/i.test(cleaned)) continue;
+    // 文字化け（記号ノイズが多い）行はスキップ
+    if (looksGarbled(cleaned)) continue;
+    return cleaned.slice(0, 30);
   }
   return null;
 }
 
 /** OCRの生テキストを解析して金額・日付・内容を取り出す */
 export function parseReceiptText(rawText: string): ReceiptResult {
-  const normalized = toHalfWidth(rawText);
+  const normalized = normalize(rawText);
   const lines = normalized
     .split('\n')
     .map(l => l.trim())
