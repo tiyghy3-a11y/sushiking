@@ -167,17 +167,46 @@ export function parseReceiptText(rawText: string): ReceiptResult {
   };
 }
 
+/**
+ * 各処理フェーズを全体（0→1）のどの区間に割り当てるか。
+ * Tesseract はフェーズごとに progress を 0→1 と報告し、さらに認識フェーズは
+ * エンジン内部で複数回 0→1 を繰り返すことがある。各フェーズを 1 本のバーに
+ * 射影することで、全体を通して 0→100% が 1 回だけ進むように見せる。
+ */
+const PROGRESS_PHASES: Record<string, [start: number, end: number]> = {
+  'loading tesseract core': [0, 0.1],
+  'initializing tesseract': [0.1, 0.15],
+  'loading language traineddata': [0.15, 0.45],
+  'initializing api': [0.45, 0.55],
+  'recognizing text': [0.55, 1],
+};
+
 /** レシート画像を OCR してテキストを抽出する */
 export async function scanReceipt(
   image: File | Blob | string,
   onProgress?: (progress: number) => void,
 ): Promise<ReceiptResult> {
+  // 後戻りせず単調増加する全体進捗。完了（promise解決）時のみ 100% にしたいので
+  // 途中は 99% で頭打ちにし、フェーズや内部リセットがあっても巻き戻らないようにする。
+  let reported = 0;
+  const report = (overall: number) => {
+    if (!onProgress) return;
+    const next = Math.min(0.99, overall);
+    if (next > reported) {
+      reported = next;
+      onProgress(reported);
+    }
+  };
+
   const { data } = await Tesseract.recognize(image, 'jpn+eng', {
     logger: m => {
-      if (m.status === 'recognizing text' && onProgress) {
-        onProgress(m.progress);
-      }
+      const range = PROGRESS_PHASES[m.status];
+      if (!range || typeof m.progress !== 'number') return;
+      const [start, end] = range;
+      report(start + (end - start) * m.progress);
     },
   });
+
+  onProgress?.(1);
   return parseReceiptText(data.text);
 }
