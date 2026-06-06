@@ -1,0 +1,41 @@
+name: Deploy to GitHub Pages
+
+on:
+  # main にマージ（push）されたら自動でビルド・デプロイ
+  push:
+    branches: [main]
+  # 手動実行も可能にする
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 同時に複数のデプロイが走らないようにする
+concurrency:
+  group: github-pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
