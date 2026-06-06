@@ -22,16 +22,25 @@ function toHalfWidth(s: string): string {
 
 /** 合計を示すキーワード（優先度の高い順） */
 const TOTAL_KEYWORDS = [
-  '合計', '合 計', '計', 'ご利用金額', 'お会計', 'お買上', 'お買上げ',
+  '合計', 'ご利用金額', 'お会計', 'お買上', 'お買上げ',
   '総計', '総額', 'お支払', '請求', 'total', 'amount',
 ];
 
-/** 合計として採用したくない行のキーワード（小計・お釣り・預り・ポイントなど） */
+/**
+ * 合計として採用したくない行のキーワード（小計・お釣り・預り・ポイントなど）。
+ * 「SubTotal」は「total」を含むため、合計と誤認しないよう必ず除外する。
+ */
 const EXCLUDE_KEYWORDS = [
-  '小計', 'お預', 'お預り', 'お預かり', 'お釣', 'おつり', '釣り', '釣銭',
-  '預り', 'お返し', 'point', 'ポイント', '残高', '前回', 'tel', '電話',
+  '小計', 'subtotal', 'sub-total', 'お預', 'お預り', 'お預かり',
+  'お釣', 'おつり', '釣り', '釣銭', '預り', 'お返し', 'change',
+  'point', 'ポイント', '残高', '前回', 'tel', '電話',
   'バーコード', '番号',
 ];
+
+/** 大文字小文字・空白を無視して比較するための正規化 */
+function compact(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, '');
+}
 
 interface AmountCandidate {
   value: number;
@@ -58,26 +67,28 @@ function stripNonAmountNoise(line: string): string {
 function extractAmounts(line: string): AmountCandidate[] {
   const cleaned = stripNonAmountNoise(line);
   const amounts: AmountCandidate[] = [];
-  // ¥/$ 付き、または カンマ区切り、または 末尾に円 が付くものを金額とみなす
-  const re = /(?:[¥$]\s*)?(\d{1,3}(?:,\d{3})+|\d+)(?:\s*円)?/g;
+  // ¥/$ 付き、カンマ区切り、小数2桁、末尾の円 などを金額とみなす
+  const re = /(?:[¥$]\s*)?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?(?:\s*円)?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(cleaned)) !== null) {
     const matched = m[0];
-    const num = parseInt(m[1].replace(/,/g, ''), 10);
-    if (isNaN(num) || num <= 0 || num > 9_999_999) continue;
-    const hint = /[¥$]|円|,/.test(matched);
-    // 通貨の手がかりが無く、かつ短い数字（個数など）は弱いので除外しやすくする
-    if (!hint && num < 10) continue;
-    amounts.push({ value: num, hint });
+    const intPart = m[1].replace(/,/g, '');
+    const decPart = m[2];
+    const value = decPart ? parseFloat(`${intPart}.${decPart}`) : parseInt(intPart, 10);
+    if (isNaN(value) || value <= 0 || value > 9_999_999) continue;
+    // ¥/$/円/カンマ/小数2桁 のいずれかがあれば金額の手がかりとみなす
+    const hint = /[¥$]|円|,/.test(matched) || decPart !== undefined;
+    // 手がかりが無く、かつ小さい数字（個数など）は弱いので除外しやすくする
+    if (!hint && value < 10) continue;
+    amounts.push({ value, hint });
   }
   return amounts;
 }
 
 /** OCRテキストから合計金額を推定する */
 function parseAmount(lines: string[]): number | null {
-  const lower = (s: string) => s.toLowerCase();
   const isExcluded = (line: string) =>
-    EXCLUDE_KEYWORDS.some(ex => lower(line).includes(lower(ex)));
+    EXCLUDE_KEYWORDS.some(ex => compact(line).includes(compact(ex)));
   const maxOf = (cands: AmountCandidate[]) => Math.max(...cands.map(c => c.value));
 
   // Pass 1: 合計キーワードを含む行を優先（同じ行に数字が無ければ次の行も見る）
@@ -85,7 +96,7 @@ function parseAmount(lines: string[]): number | null {
     let best: number | null = null;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (!lower(line).includes(lower(keyword))) continue;
+      if (!compact(line).includes(compact(keyword))) continue;
       if (isExcluded(line)) continue;
       let cands = extractAmounts(line);
       if (cands.length === 0 && i + 1 < lines.length && !isExcluded(lines[i + 1])) {
@@ -98,7 +109,7 @@ function parseAmount(lines: string[]): number | null {
     if (best !== null) return best;
   }
 
-  // Pass 2: 通貨の手がかり（¥・$・円・カンマ）がある数値のうち最大のもの
+  // Pass 2: 通貨の手がかり（¥・$・円・カンマ・小数2桁）がある数値のうち最大のもの
   let hinted: number | null = null;
   for (const line of lines) {
     if (isExcluded(line)) continue;
@@ -108,6 +119,18 @@ function parseAmount(lines: string[]): number | null {
     if (hinted === null || lineMax > hinted) hinted = lineMax;
   }
   if (hinted !== null) return hinted;
+
+  // Pass 2.5: 合計も金額らしき数値も見つからない場合に限り、小計を代わりに採用する
+  const SUBTOTAL_KEYWORDS = ['小計', 'subtotal', 'sub-total'];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!SUBTOTAL_KEYWORDS.some(k => compact(line).includes(compact(k)))) continue;
+    let cands = extractAmounts(line);
+    if (cands.length === 0 && i + 1 < lines.length) {
+      cands = extractAmounts(lines[i + 1]);
+    }
+    if (cands.length > 0) return maxOf(cands);
+  }
 
   // Pass 3: フォールバック。レシート内で最も大きい妥当な数値（多くの場合これが合計）
   let any: number | null = null;
@@ -131,6 +154,15 @@ function parseDate(text: string): string | null {
   let m = text.match(/(\d{4})\s*[/\-.年]\s*(\d{1,2})\s*[/\-.月]\s*(\d{1,2})/);
   if (m) {
     const [y, mo, d] = [+m[1], +m[2], +m[3]];
+    if (isValid(y, mo, d)) return `${y}-${pad(mo)}-${pad(d)}`;
+  }
+
+  // m/d/yyyy または d/m/yyyy（年が末尾。米国レシートなど）
+  m = text.match(/\b(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{4})\b/);
+  if (m) {
+    const a = +m[1], b = +m[2], y = +m[3];
+    // 12を超える方を「日」とみなす。判別できなければ M/D（米国式）とする
+    const [mo, d] = a > 12 && b <= 12 ? [b, a] : [a, b];
     if (isValid(y, mo, d)) return `${y}-${pad(mo)}-${pad(d)}`;
   }
 
@@ -177,72 +209,118 @@ export function parseReceiptText(rawText: string): ReceiptResult {
   };
 }
 
+/** 画像（File/Blob/URL）を HTMLImageElement として読み込む */
+function loadImage(src: File | Blob | string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const el = new Image();
+    const url = typeof src === 'string' ? src : URL.createObjectURL(src);
+    el.onload = () => {
+      if (typeof src !== 'string') URL.revokeObjectURL(url);
+      resolve(el);
+    };
+    el.onerror = () => {
+      if (typeof src !== 'string') URL.revokeObjectURL(url);
+      reject(new Error('画像の読み込みに失敗しました'));
+    };
+    el.src = url;
+  });
+}
+
 /**
  * OCR精度を上げるための画像前処理。
  * 拡大してグレースケール化し、コントラストを強調する。
  */
-async function preprocessImage(file: File | Blob): Promise<HTMLCanvasElement | Blob> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-      el.src = url;
-    });
+function preprocessImage(img: HTMLImageElement): HTMLCanvasElement {
+  // 小さい画像は拡大、大きすぎる画像は縮小して、長辺を約1600pxに揃える
+  const targetMax = 1600;
+  const longest = Math.max(img.width, img.height) || targetMax;
+  const factor = Math.min(3, Math.max(0.5, targetMax / longest));
+  const width = Math.round(img.width * factor);
+  const height = Math.round(img.height * factor);
 
-    // 小さい画像は拡大、大きすぎる画像は縮小して、長辺を約1600pxに揃える
-    const targetMax = 1600;
-    const longest = Math.max(img.width, img.height) || targetMax;
-    const factor = Math.min(3, Math.max(0.5, targetMax / longest));
-    const width = Math.round(img.width * factor);
-    const height = Math.round(img.height * factor);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
+  ctx.drawImage(img, 0, 0, width, height);
 
-    ctx.drawImage(img, 0, 0, width, height);
-
-    // グレースケール化 + コントラスト強調
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const d = imageData.data;
-    const contrast = 1.4;
-    const intercept = 128 * (1 - contrast);
-    for (let i = 0; i < d.length; i += 4) {
-      let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      gray = gray * contrast + intercept;
-      gray = gray < 0 ? 0 : gray > 255 ? 255 : gray;
-      d[i] = d[i + 1] = d[i + 2] = gray;
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    return canvas;
-  } catch {
-    return file;
-  } finally {
-    URL.revokeObjectURL(url);
+  // グレースケール化 + コントラスト強調
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const d = imageData.data;
+  const contrast = 1.4;
+  const intercept = 128 * (1 - contrast);
+  for (let i = 0; i < d.length; i += 4) {
+    let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    gray = gray * contrast + intercept;
+    gray = gray < 0 ? 0 : gray > 255 ? 255 : gray;
+    d[i] = d[i + 1] = d[i + 2] = gray;
   }
+  ctx.putImageData(imageData, 0, 0);
+
+  return canvas;
 }
 
-/** レシート画像を OCR してテキストを抽出する */
+/** キャンバスを90度単位で回転した新しいキャンバスを返す */
+function rotateCanvas(src: HTMLCanvasElement, degrees: number): HTMLCanvasElement {
+  const normalized = ((degrees % 360) + 360) % 360;
+  if (normalized === 0) return src;
+
+  const swap = normalized === 90 || normalized === 270;
+  const canvas = document.createElement('canvas');
+  canvas.width = swap ? src.height : src.width;
+  canvas.height = swap ? src.width : src.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return src;
+
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((normalized * Math.PI) / 180);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  return canvas;
+}
+
+/** OCRの信頼度が十分とみなせる閾値 */
+const CONFIDENCE_THRESHOLD = 72;
+
+/**
+ * レシート画像を OCR してテキストを抽出する。
+ * レシート写真は向きがまちまちなので、信頼度が低い場合は
+ * 90度ずつ回転させて読み直し、最も確からしい結果を採用する。
+ */
 export async function scanReceipt(
   image: File | Blob | string,
   onProgress?: (progress: number) => void,
 ): Promise<ReceiptResult> {
-  let input: Tesseract.ImageLike = image;
-  if (typeof image !== 'string') {
-    input = await preprocessImage(image);
-  }
+  const img = await loadImage(image);
+  const base = preprocessImage(img);
 
-  const { data } = await Tesseract.recognize(input, 'jpn+eng', {
+  const worker = await Tesseract.createWorker('jpn+eng', undefined, {
     logger: m => {
-      if (m.status === 'recognizing text' && onProgress) {
-        onProgress(m.progress);
-      }
+      if (m.status === 'recognizing text' && onProgress) onProgress(m.progress);
     },
   });
-  return parseReceiptText(data.text);
+
+  try {
+    let bestText = '';
+    let bestConfidence = -1;
+
+    // まず正位置、ダメなら時計回り・反時計回り・上下反転を試す
+    for (const degrees of [0, 90, 270, 180]) {
+      const target = rotateCanvas(base, degrees);
+      const { data } = await worker.recognize(target);
+      if (data.confidence > bestConfidence) {
+        bestConfidence = data.confidence;
+        bestText = data.text;
+      }
+      // 十分に読めて金額も取れていれば打ち切る
+      if (data.confidence >= CONFIDENCE_THRESHOLD && parseReceiptText(data.text).amount !== null) {
+        break;
+      }
+    }
+
+    return parseReceiptText(bestText);
+  } finally {
+    await worker.terminate();
+  }
 }
