@@ -1,4 +1,49 @@
-# React + TypeScript + Vite
+# SushiKing 割り勘アプリ
+
+## クラウド同期（Supabase）
+
+「リンクを踏むと常に最新の状態が表示される」同期機能は Supabase を使います。
+環境変数を設定すると有効になり、未設定の場合は従来どおり URL にデータを埋め込む
+スナップショット共有にフォールバックします。
+
+### セットアップ手順
+
+1. [supabase.com](https://supabase.com) で無料プロジェクトを作成する。
+2. 「SQL Editor」で以下を実行してテーブルとポリシーを作成する。
+
+   ```sql
+   create table public.groups (
+     id uuid primary key default gen_random_uuid(),
+     data jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+
+   alter table public.groups enable row level security;
+
+   -- リンク（=ID）を知っている人だけが読み書きできるシンプルな共有モデル
+   create policy "anon read"   on public.groups for select using (true);
+   create policy "anon insert" on public.groups for insert with check (true);
+   create policy "anon update" on public.groups for update using (true) with check (true);
+   ```
+
+3. 「Project Settings > API」から `Project URL` と `anon public` キーを取得し、
+   プロジェクト直下に `.env` を作成して設定する（`.env.example` を参照）。
+
+   ```
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-public-key
+   ```
+
+4. `npm run dev` で起動。共有モーダルを開くとクラウドにグループが作成され、
+   `?group=<id>` 形式の同期リンクが発行されます。リンクを開く／アプリを開くたびに
+   クラウドから最新の支払い状況を取得します。
+
+> GitHub Pages 等にデプロイする場合は、ビルド時に上記の環境変数を渡してください
+> （anon キーはクライアントに埋め込まれる公開キーで、RLS で保護される前提です）。
+
+---
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

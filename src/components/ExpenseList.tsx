@@ -12,6 +12,7 @@ interface Props {
   onAddExpense: (expense: Omit<Expense, 'id'>) => void;
   onUpdateExpense: (id: string, expense: Omit<Expense, 'id'>) => void;
   onDeleteExpense: (id: string) => void;
+  onAssignSyncId: (syncId: string) => void;
 }
 
 export default function ExpenseList({
@@ -21,6 +22,7 @@ export default function ExpenseList({
   onAddExpense,
   onUpdateExpense,
   onDeleteExpense,
+  onAssignSyncId,
 }: Props) {
   const { groupName, currency } = data;
   const [showAdd, setShowAdd] = useState(false);
@@ -130,7 +132,7 @@ export default function ExpenseList({
 
       {/* Modals */}
       {showShare && (
-        <ShareModal data={data} onClose={() => setShowShare(false)} />
+        <ShareModal data={data} onAssignSyncId={onAssignSyncId} onClose={() => setShowShare(false)} />
       )}
       {showAdd && (
         <AddExpenseModal
