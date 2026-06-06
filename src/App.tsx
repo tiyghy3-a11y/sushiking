@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppData, Expense } from './types';
 import { useStorage } from './hooks/useStorage';
-import { getSharedGroupFromURL, clearURLParam } from './utils/share';
+import {
+  getSharedGroupFromURL,
+  getSyncIdFromURL,
+  clearURLParam,
+} from './utils/share';
+import { isSyncEnabled } from './utils/supabase';
+import { fetchSyncGroup, pushSyncGroup } from './utils/sync';
 import Setup from './components/Setup';
 import Navigation from './components/Navigation';
 import ExpenseList from './components/ExpenseList';
@@ -15,8 +21,48 @@ export default function App() {
   const { data, setData } = useStorage();
   const [activeTab, setActiveTab] = useState<Tab>('expenses');
 
-  const [sharedGroup] = useState<AppData | null>(() => getSharedGroupFromURL());
-  const [showImport, setShowImport] = useState<boolean>(() => getSharedGroupFromURL() !== null);
+  // 同期リンク(?group=)がなければ従来方式のスナップショット(?g=)を初期表示
+  const [sharedGroup, setSharedGroup] = useState<AppData | null>(
+    () => (getSyncIdFromURL() ? null : getSharedGroupFromURL()),
+  );
+  const [showImport, setShowImport] = useState(
+    () => !getSyncIdFromURL() && getSharedGroupFromURL() !== null,
+  );
+
+  // 起動時：同期リンクの取得 or 自分のグループの最新化を一度だけ行う（非同期）
+  const bootstrapped = useRef(false);
+  useEffect(() => {
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
+
+    const urlSyncId = getSyncIdFromURL();
+
+    if (urlSyncId) {
+      // 同期リンク：クラウドから最新を取得して取り込み確認を表示
+      fetchSyncGroup(urlSyncId).then(remote => {
+        if (remote) {
+          setSharedGroup(remote);
+          setShowImport(true);
+        } else {
+          clearURLParam();
+        }
+      });
+    } else if (isSyncEnabled && data.syncId) {
+      // 自分のグループを開いたとき：クラウドの最新で更新
+      fetchSyncGroup(data.syncId).then(remote => {
+        if (remote) setData(remote);
+      });
+    }
+    // 起動時のみ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 変更があればクラウドへ反映（デバウンス）
+  useEffect(() => {
+    if (!isSyncEnabled || !data.syncId) return;
+    const t = setTimeout(() => { void pushSyncGroup(data); }, 600);
+    return () => clearTimeout(t);
+  }, [data]);
 
   const isSetupComplete = data.groupName && data.members.length >= 2;
 
@@ -84,6 +130,7 @@ export default function App() {
               onAddExpense={addExpense}
               onUpdateExpense={updateExpense}
               onDeleteExpense={deleteExpense}
+              onAssignSyncId={syncId => handleDataUpdate({ syncId })}
             />
           )}
           {activeTab === 'settlement' && (
