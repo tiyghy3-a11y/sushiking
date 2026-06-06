@@ -1,17 +1,23 @@
 import { useState } from 'react';
 import type { AppData, Expense } from './types';
 import { useStorage } from './hooks/useStorage';
+import { getSharedGroupFromURL, clearURLParam } from './utils/share';
 import Setup from './components/Setup';
 import Navigation from './components/Navigation';
 import ExpenseList from './components/ExpenseList';
 import Settlement from './components/Settlement';
 import MembersSettings from './components/MembersSettings';
+import ImportGroupModal from './components/ImportGroupModal';
 
 type Tab = 'expenses' | 'settlement' | 'settings';
 
 export default function App() {
   const { data, setData } = useStorage();
   const [activeTab, setActiveTab] = useState<Tab>('expenses');
+
+  // Check for shared group in URL on first render
+  const [sharedGroup] = useState<AppData | null>(() => getSharedGroupFromURL());
+  const [showImport, setShowImport] = useState<boolean>(() => getSharedGroupFromURL() !== null);
 
   const isSetupComplete = data.groupName && data.members.length >= 2;
 
@@ -44,38 +50,61 @@ export default function App() {
     setActiveTab('expenses');
   }
 
-  if (!isSetupComplete) {
-    return <Setup onComplete={handleSetupComplete} />;
+  function handleImport() {
+    if (!sharedGroup) return;
+    setData(sharedGroup);
+    clearURLParam();
+    setShowImport(false);
+  }
+
+  function handleDismissImport() {
+    clearURLParam();
+    setShowImport(false);
   }
 
   return (
-    <div className="relative">
-      {activeTab === 'expenses' && (
-        <ExpenseList
-          groupName={data.groupName}
-          currency={data.currency}
-          members={data.members}
-          expenses={data.expenses}
-          onAddExpense={addExpense}
-          onUpdateExpense={updateExpense}
-          onDeleteExpense={deleteExpense}
+    <>
+      {/* Import modal from shared URL — shown before setup or main app */}
+      {showImport && sharedGroup && (
+        <ImportGroupModal
+          sharedData={sharedGroup}
+          hasExistingGroup={!!isSetupComplete}
+          onImport={handleImport}
+          onDismiss={handleDismissImport}
         />
       )}
-      {activeTab === 'settlement' && (
-        <Settlement
-          currency={data.currency}
-          members={data.members}
-          expenses={data.expenses}
-        />
+
+      {!isSetupComplete ? (
+        <Setup onComplete={handleSetupComplete} />
+      ) : (
+        <div className="relative">
+          {activeTab === 'expenses' && (
+            <ExpenseList
+              data={data}
+              members={data.members}
+              expenses={data.expenses}
+              onAddExpense={addExpense}
+              onUpdateExpense={updateExpense}
+              onDeleteExpense={deleteExpense}
+            />
+          )}
+          {activeTab === 'settlement' && (
+            <Settlement
+              currency={data.currency}
+              members={data.members}
+              expenses={data.expenses}
+            />
+          )}
+          {activeTab === 'settings' && (
+            <MembersSettings
+              data={data}
+              onUpdate={handleDataUpdate}
+              onReset={handleReset}
+            />
+          )}
+          <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
       )}
-      {activeTab === 'settings' && (
-        <MembersSettings
-          data={data}
-          onUpdate={handleDataUpdate}
-          onReset={handleReset}
-        />
-      )}
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-    </div>
+    </>
   );
 }
