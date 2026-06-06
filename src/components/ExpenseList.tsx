@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import type { Member, Expense } from '../types';
+import type { Member, Expense, AppData } from '../types';
 import { CATEGORIES } from '../types';
 import { formatCurrency } from '../utils/calculator';
 import AddExpenseModal from './AddExpenseModal';
+import ShareModal from './ShareModal';
 
 interface Props {
-  groupName: string;
-  currency: string;
+  data: AppData;
   members: Member[];
   expenses: Expense[];
   onAddExpense: (expense: Omit<Expense, 'id'>) => void;
@@ -15,15 +15,16 @@ interface Props {
 }
 
 export default function ExpenseList({
-  groupName,
-  currency,
+  data,
   members,
   expenses,
   onAddExpense,
   onUpdateExpense,
   onDeleteExpense,
 }: Props) {
+  const { groupName, currency } = data;
   const [showAdd, setShowAdd] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const total = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -43,7 +44,13 @@ export default function ExpenseList({
             <p className="text-white/70 text-xs font-medium uppercase tracking-wider">グループ</p>
             <h1 className="text-white text-xl font-bold mt-0.5">{groupName}</h1>
           </div>
-          <span className="text-4xl">🍣</span>
+          <button
+            onClick={() => setShowShare(true)}
+            className="bg-white/20 active:bg-white/30 transition-colors rounded-xl px-3 py-2 flex items-center gap-1.5 active:scale-95 transition-transform"
+          >
+            <span className="text-white text-base">↗</span>
+            <span className="text-white text-sm font-medium">共有</span>
+          </button>
         </div>
         <div className="bg-white/10 rounded-2xl p-4">
           <p className="text-white/70 text-sm">合計支出</p>
@@ -122,10 +129,13 @@ export default function ExpenseList({
       </button>
 
       {/* Modals */}
+      {showShare && (
+        <ShareModal data={data} onClose={() => setShowShare(false)} />
+      )}
       {showAdd && (
         <AddExpenseModal
           members={members}
-          onSave={data => { onAddExpense(data); setShowAdd(false); }}
+          onSave={expense => { onAddExpense(expense); setShowAdd(false); }}
           onClose={() => setShowAdd(false)}
         />
       )}
@@ -133,7 +143,7 @@ export default function ExpenseList({
         <AddExpenseModal
           members={members}
           expense={editingExpense}
-          onSave={data => { onUpdateExpense(editingExpense.id, data); setEditingExpense(null); }}
+          onSave={expense => { onUpdateExpense(editingExpense.id, expense); setEditingExpense(null); }}
           onDelete={() => { onDeleteExpense(editingExpense.id); setEditingExpense(null); }}
           onClose={() => setEditingExpense(null)}
         />
