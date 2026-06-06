@@ -48,7 +48,7 @@ export default function AddExpenseModal({ members, expense, onSave, onDelete, on
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ maxWidth: 430, margin: '0 auto', left: 0, right: 0 }}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full bg-white rounded-t-3xl shadow-2xl max-h-[92dvh] overflow-y-auto">
+      <div className="relative w-full bg-white rounded-t-3xl shadow-2xl max-h-[92dvh] overflow-y-auto overflow-x-hidden" style={{ touchAction: 'pan-y' }}>
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
