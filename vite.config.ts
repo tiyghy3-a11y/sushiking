@@ -1,8 +1,18 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vite.dev/config/
 export default defineConfig({
+  root: 'web',
   plugins: [react()],
-  base: '/sushiking/',
-})
+  build: {
+    outDir: '../dist/web',
+    emptyOutDir: true,
+  },
+  server: {
+    // `wrangler dev`（:8787）に API と画像配信をプロキシする
+    proxy: {
+      '/api': 'http://127.0.0.1:8787',
+      '/img': 'http://127.0.0.1:8787',
+    },
+  },
+});

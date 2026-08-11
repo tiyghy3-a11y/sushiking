@@ -1,0 +1,52 @@
+/*
+ * DESIGN.md（getdesign apple）のトークンをそのまま CSS 変数に落としたもの。
+ * ここに書いていない色を UI で使わないこと。アクセントは Action Blue の1色だけ。
+ */
+:root {
+  /* colors */
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --body-on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #7a7a7a;
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+  --canvas: #ffffff;
+  --canvas-parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --surface-tile-1: #272729;
+  --surface-tile-2: #2a2a2c;
+  --surface-tile-3: #252527;
+  --surface-black: #000000;
+  --surface-chip-translucent: rgba(210, 210, 215, 0.64);
+  --on-primary: #ffffff;
+
+  /* type */
+  --font-display: 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+    'Noto Sans JP', sans-serif;
+  --font-text: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+    'Noto Sans JP', sans-serif;
+
+  /* spacing */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 17px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 80px;
+
+  /* radius */
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
+
+  /* elevation: 影は「面の上に置かれた写真」だけに使う唯一のシグネチャ */
+  --shadow-photo: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+}

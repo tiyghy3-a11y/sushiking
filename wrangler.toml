@@ -1,0 +1,23 @@
+name = "yamalog"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# フロント（Vite ビルド成果物）を同一 Worker から配信する
+[assets]
+directory = "./dist/web"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yamalog"
+# `wrangler d1 create yamalog` の出力で置き換える
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "yamalog-photos"
+
+[observability]
+enabled = true
