@@ -43,27 +43,68 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function heicToJpeg(file: File): Promise<Blob> {
+/**
+ * iOS Safari は HEIC をネイティブにデコードできる。読める場合は 1.3MB の
+ * heic2any を読み込まない（回線とメモリの節約。スマホからの取り込みが主用途）。
+ */
+async function decodableBlob(file: File): Promise<Blob> {
+  if (!isHeic(file)) return file;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      const probe = await createImageBitmap(file);
+      probe.close();
+      return file;
+    }
+  } catch {
+    // ネイティブに読めない → 変換にフォールバック
+  }
   const { default: heic2any } = await import('heic2any');
   const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
   return Array.isArray(out) ? out[0] : (out as Blob);
 }
 
-async function loadBitmap(blob: Blob): Promise<ImageBitmap> {
-  // EXIF Orientation はここで正立させる（表示用は補正済み・原本は無加工）
-  return createImageBitmap(blob, { imageOrientation: 'from-image' });
+interface Drawable {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
 }
 
-async function resize(bitmap: ImageBitmap, edge: number, quality: number): Promise<Blob> {
-  const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+/**
+ * 表示用の生成元を得る（原本は無加工のまま）。
+ *
+ * EXIF Orientation が付いている写真は <img> 経由で読む。<img> は
+ * image-orientation: from-image が既定なのでどのブラウザでも正立するのに対し、
+ * createImageBitmap の imageOrientation オプションは Safari 16.4 未満で無視され、
+ * iPhone の縦位置写真が横倒しのまま保存されてしまう。
+ */
+async function loadDrawable(blob: Blob, needsOrientationFix: boolean): Promise<Drawable> {
+  if (needsOrientationFix || typeof createImageBitmap !== 'function') {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return {
+      source: img,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      release: () => URL.revokeObjectURL(url),
+    };
+  }
+  const bitmap = await createImageBitmap(blob);
+  return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
+}
+
+async function resize(drawable: Drawable, edge: number, quality: number): Promise<Blob> {
+  const scale = Math.min(1, edge / Math.max(drawable.width, drawable.height));
+  const width = Math.max(1, Math.round(drawable.width * scale));
+  const height = Math.max(1, Math.round(drawable.height * scale));
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas 2d context を取得できませんでした');
-  ctx.drawImage(bitmap, 0, 0, width, height);
+  ctx.drawImage(drawable.source, 0, 0, width, height);
   return await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('リサイズに失敗しました'))),
@@ -106,13 +147,13 @@ export async function preparePhoto(file: File): Promise<PreparedPhoto> {
   // GPSAltitudeRef が 1 なら海面下なので負値にする
   if (altitude != null && Number(exif.GPSAltitudeRef) === 1) altitude = -altitude;
 
-  const decodable = isHeic(file) ? await heicToJpeg(file) : file;
-  const bitmap = await loadBitmap(decodable);
+  const orientation = typeof exif.Orientation === 'number' ? exif.Orientation : 1;
+  const drawable = await loadDrawable(await decodableBlob(file), orientation !== 1);
   const [displayBlob, thumbBlob] = await Promise.all([
-    resize(bitmap, DISPLAY_EDGE, 0.86),
-    resize(bitmap, THUMB_EDGE, 0.78),
+    resize(drawable, DISPLAY_EDGE, 0.86),
+    resize(drawable, THUMB_EDGE, 0.78),
   ]);
-  bitmap.close();
+  drawable.release();
 
   return {
     file,
@@ -127,8 +168,9 @@ export async function preparePhoto(file: File): Promise<PreparedPhoto> {
       mime: file.type || (isHeic(file) ? 'image/heic' : 'image/jpeg'),
       ext: (file.name.split('.').pop() ?? 'jpg').toLowerCase(),
       byte_size: file.size,
-      width: typeof exif.ExifImageWidth === 'number' ? exif.ExifImageWidth : null,
-      height: typeof exif.ExifImageHeight === 'number' ? exif.ExifImageHeight : null,
+      // Orientation 適用後の実寸を採る（EXIFの値は回転前で、縦横が逆になることがある）
+      width: drawable.width || (typeof exif.ExifImageWidth === 'number' ? exif.ExifImageWidth : null),
+      height: drawable.height || (typeof exif.ExifImageHeight === 'number' ? exif.ExifImageHeight : null),
       taken_at_raw,
       time_source,
       lat,

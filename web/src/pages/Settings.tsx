@@ -87,7 +87,6 @@ function ContributorSettings() {
           <label className="row t-caption" style={{ gap: 4 }}>
             <input
               type="checkbox"
-              style={{ width: 'auto' }}
               checked={isSelf}
               onChange={(e) => setIsSelf(e.target.checked)}
             />
@@ -237,7 +236,8 @@ function MountainSettings() {
                   className="link t-caption"
                   style={{
                     textAlign: 'left',
-                    padding: '6px 0',
+                    padding: '12px 0',
+                    minHeight: 44,
                     color: m.id === selectedId ? 'var(--primary)' : 'var(--ink)',
                     fontWeight: m.id === selectedId ? 600 : 400,
                   }}

@@ -288,6 +288,7 @@ export function ActivityDetail() {
             {stats.segments.length === 0 ? (
               <p className="empty t-caption">区間を算出できる写真がありません。</p>
             ) : (
+              <div className="table-scroll">
               <table style={{ width: '100%', borderCollapse: 'collapse' }} className="t-caption">
                 <thead>
                   <tr className="muted">
@@ -316,6 +317,7 @@ export function ActivityDetail() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </section>

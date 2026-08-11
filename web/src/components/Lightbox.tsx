@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { displayUrl, originalUrl } from '../lib/api';
 import { coordSourceLabel, formatDate, formatTime } from '../lib/format';
 import type { Photo } from '../lib/types';
@@ -13,6 +13,10 @@ interface Props {
 
 export function Lightbox({ photos, index, onClose, onIndexChange, onToggleFavorite }: Props) {
   const photo = photos[index];
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const go = (delta: number) =>
+    onIndexChange(Math.min(photos.length - 1, Math.max(0, index + delta)));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -27,7 +31,26 @@ export function Lightbox({ photos, index, onClose, onIndexChange, onToggleFavori
   if (!photo) return null;
 
   return (
-    <div className="lightbox" role="dialog" aria-modal="true">
+    <div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      // 横スワイプで写真送り（縦スワイプは無視してページ操作を邪魔しない）
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        touchStart.current = { x: t.clientX, y: t.clientY };
+      }}
+      onTouchEnd={(e) => {
+        const start = touchStart.current;
+        touchStart.current = null;
+        if (!start) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+        go(dx < 0 ? 1 : -1);
+      }}
+    >
       <div className="row" style={{ padding: '0 var(--space-sm)', justifyContent: 'flex-end' }}>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="閉じる">
           ✕
@@ -54,20 +77,10 @@ export function Lightbox({ photos, index, onClose, onIndexChange, onToggleFavori
           </span>
         </div>
         <div className="row">
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => onIndexChange(Math.max(0, index - 1))}
-            aria-label="前の写真"
-          >
+          <button type="button" className="icon-btn" onClick={() => go(-1)} aria-label="前の写真">
             ‹
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => onIndexChange(Math.min(photos.length - 1, index + 1))}
-            aria-label="次の写真"
-          >
+          <button type="button" className="icon-btn" onClick={() => go(1)} aria-label="次の写真">
             ›
           </button>
           {onToggleFavorite && (

@@ -115,7 +115,6 @@ export function MountainSelect({ links, onChange, suggestion }: SelectProps) {
               <label className="row" style={{ gap: 'var(--space-xs)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  style={{ width: 'auto' }}
                   checked={checked}
                   onChange={() => toggle(m.id)}
                 />
@@ -133,7 +132,6 @@ export function MountainSelect({ links, onChange, suggestion }: SelectProps) {
                   <input
                     type="radio"
                     name="primary-mountain"
-                    style={{ width: 'auto' }}
                     checked={link?.is_primary ?? false}
                     onChange={() => setPrimary(m.id)}
                   />

@@ -92,7 +92,10 @@ export function MapView({
       zoom,
       attributionControl: { compact: false },
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    // ズームボタンは29px角でタップ対象として小さい。スマホではピンチ操作に任せる
+    if (window.matchMedia('(min-width: 735px)').matches) {
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    }
     map.on('click', (e) => clickRef.current?.({ lng: e.lngLat.lng, lat: e.lngLat.lat }));
     mapRef.current = map;
     return () => {

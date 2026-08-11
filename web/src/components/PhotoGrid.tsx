@@ -34,16 +34,37 @@ export function PhotoGrid({
         const isSelected = selected?.has(photo.id) ?? false;
         const contributor = nameOf(photo.contributor_id);
         return (
-          <button
+          <div
             key={photo.id}
-            type="button"
             className={`photo-cell${isSelected ? ' selected' : ''}`}
+            role="button"
+            tabIndex={0}
             onClick={() => (selectable ? onToggle?.(photo.id) : onOpen?.(index))}
-            onDoubleClick={() => onOpen?.(index)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              if (selectable) onToggle?.(photo.id);
+              else onOpen?.(index);
+            }}
             title={photo.caption ?? photo.taken_at ?? ''}
           >
             <img src={thumbUrl(photo.id)} alt={photo.caption ?? ''} loading="lazy" />
             {selectable && <span className="select-box">{isSelected ? '✓' : ''}</span>}
+            {/* 選択中はタップが選択に使われるので、拡大は専用ボタンに逃がす
+                （スマホではダブルタップがズームと競合するため使わない） */}
+            {selectable && onOpen && (
+              <button
+                type="button"
+                className="expand-btn"
+                aria-label="拡大して見る"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen(index);
+                }}
+              >
+                ⤢
+              </button>
+            )}
             <span className="badges">
               {photo.taken_at && <span className="chip">{formatTime(photo.taken_at)}</span>}
               {contributor && <span className="chip">{contributor}</span>}
@@ -51,7 +72,7 @@ export function PhotoGrid({
               {photo.coord_source === 'interpolated' && <span className="chip chip-dim">補間</span>}
               {photo.is_favorite === 1 && <span className="chip">★</span>}
             </span>
-          </button>
+          </div>
         );
       })}
     </div>

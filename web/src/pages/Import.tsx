@@ -17,6 +17,8 @@ interface Result {
 }
 
 const UPLOAD_CONCURRENCY = 4;
+/** スマホのメモリで安全に扱える上限。超える分はCLIか分割で入れる */
+const MAX_FILES_PER_BATCH = 60;
 
 export function Import() {
   const [contributors, setContributors] = useState<Contributor[]>([]);
@@ -47,6 +49,15 @@ export function Import() {
 
   const handleFiles = async (files: File[]) => {
     if (files.length === 0) return;
+    // 解析結果（原本＋表示用＋サムネ）をメモリに抱えるので、
+    // スマホで大量に選ぶとタブごと落ちる。分割を促す。
+    if (files.length > MAX_FILES_PER_BATCH) {
+      setError(
+        `一度に扱えるのは${MAX_FILES_PER_BATCH}枚までです（メモリの都合）。` +
+          `分けて取り込むか、数千枚の初回投入は scripts/bulk-import.ts を使ってください。`,
+      );
+      return;
+    }
     setPhase('preparing');
     setError(null);
     setResult(null);
@@ -178,15 +189,17 @@ export function Import() {
               background: dragging ? 'var(--canvas-parchment)' : 'var(--canvas)',
             }}
           >
-            <p className="t-lead">ここに写真をドロップ</p>
-            <p className="t-caption muted">JPEG / HEIC / PNG に対応</p>
+            <p className="t-lead">写真を選ぶ</p>
+            <p className="t-caption muted">
+              JPEG / HEIC / PNG · 一度に{MAX_FILES_PER_BATCH}枚まで（PCではドラッグ&ドロップも可）
+            </p>
             <button
               type="button"
               className="btn"
               style={{ marginTop: 'var(--space-md)' }}
               onClick={() => inputRef.current?.click()}
             >
-              ファイルを選択
+              写真を選択
             </button>
             <input
               ref={inputRef}
