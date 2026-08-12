@@ -23,6 +23,25 @@
 
 画像処理をWorkerでやるとCPU時間制限とライブラリ互換性で詰まるため、Worker の責務は「受け取ったものをR2とD1に置く」だけに限定している。
 
+## まず触ってみる
+
+Cloudflareのアカウントなしで動く。D1もR2もローカル（`.wrangler/state` 配下）に作られる。
+
+```bash
+npm install
+npm run setup:local   # マイグレーション + 百名山マスタ投入
+npm start             # ビルドして http://127.0.0.1:8787 で起動
+
+# 別ターミナルで、中身のあるデモデータを入れる
+npm run demo
+```
+
+`npm run demo` は合成画像にEXIF相当のメタデータを付けて投入し、山行3本（槍ヶ岳〜穂高岳の縦走 / 富士山 / 丹沢山）と未分類の写真7枚を作る。座標を落とした写真や撮影時刻のない写真も混ぜてあるので、**座標の補間・「日付不明」ブロック・山の自動判定・撮影者バッジ**まで一通り確認できる。消すときは `npm run demo:reset`。
+
+**スマホで触る場合** は `npm run start:lan` で起動し、同じWi-Fiにいるスマホから `http://<PCのIPアドレス>:8787` を開く（IPは macOS なら `ipconfig getifaddr en0`、Windows なら `ipconfig`）。
+
+開発時はViteのHMRを使う方が速い（`npm run dev:worker` と `npm run dev` を別ターミナルで起動 → http://127.0.0.1:5173）。
+
 ## セットアップ
 
 ```bash
