@@ -3,6 +3,10 @@
  * ここに書いていない色を UI で使わないこと。アクセントは Action Blue の1色だけ。
  */
 :root {
+  /* 明キャンバスに写真を置く設計なので、フォームUIも明モードに固定する
+     （meta タグに頼らずCSSで宣言し、head を差し替えられる配信先でも崩れないようにする） */
+  color-scheme: light;
+
   /* colors */
   --primary: #0066cc;
   --primary-focus: #0071e3;

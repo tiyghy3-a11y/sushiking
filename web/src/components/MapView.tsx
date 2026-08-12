@@ -17,19 +17,29 @@ export type GsiLayerKey = keyof typeof GSI_LAYERS;
 const GSI_ATTRIBUTION =
   '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">国土地理院</a>';
 
-const styleFor = (key: GsiLayerKey): maplibregl.StyleSpecification => ({
-  version: 8,
-  sources: {
-    gsi: {
-      type: 'raster',
-      tiles: [GSI_LAYERS[key].url],
-      tileSize: 256,
-      maxzoom: 18,
-      attribution: GSI_ATTRIBUTION,
+const styleFor = (key: GsiLayerKey): maplibregl.StyleSpecification => {
+  // 単一HTMLのデモは外部リクエストが遮断されるため、タイルを読まず下地だけ描く
+  if (window.__yamalogDemo__) {
+    return {
+      version: 8,
+      sources: {},
+      layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e8e8ea' } }],
+    };
+  }
+  return {
+    version: 8,
+    sources: {
+      gsi: {
+        type: 'raster',
+        tiles: [GSI_LAYERS[key].url],
+        tileSize: 256,
+        maxzoom: 18,
+        attribution: GSI_ATTRIBUTION,
+      },
     },
-  },
-  layers: [{ id: 'gsi', type: 'raster', source: 'gsi' }],
-});
+    layers: [{ id: 'gsi', type: 'raster', source: 'gsi' }],
+  };
+};
 
 export interface MapMarker {
   id: string;
@@ -189,7 +199,9 @@ export function MapView({
       </div>
       <div ref={containerRef} className={tall ? 'map tall' : 'map'} />
       <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
-        地図・写真タイル: 国土地理院
+        {window.__yamalogDemo__
+          ? 'デモでは地図タイルを読み込めないため下地のみ。ピンと軌跡は実データの座標です（本番のタイル出典: 国土地理院）'
+          : '地図・写真タイル: 国土地理院'}
       </p>
     </div>
   );

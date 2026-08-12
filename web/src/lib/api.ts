@@ -126,6 +126,20 @@ export const api = {
     request<{ batch: { id: string } }>('/api/import-batches', { method: 'POST', body: json(body) }),
 };
 
-export const thumbUrl = (photoId: string) => `/img/thumb/${photoId}`;
-export const displayUrl = (photoId: string) => `/img/display/${photoId}`;
-export const originalUrl = (photoId: string) => `/img/original/${photoId}`;
+/**
+ * 画像は通常 Worker 経由（/img/...）で配信するが、単一HTMLのデモビルドでは
+ * ページ内の data URI / blob URL に差し替える。デモ以外では常に undefined。
+ */
+declare global {
+  interface Window {
+    __yamalogDemoImages__?: Record<string, { thumb: string; display: string }>;
+    __yamalogDemo__?: boolean;
+  }
+}
+
+export const thumbUrl = (photoId: string) =>
+  window.__yamalogDemoImages__?.[photoId]?.thumb ?? `/img/thumb/${photoId}`;
+export const displayUrl = (photoId: string) =>
+  window.__yamalogDemoImages__?.[photoId]?.display ?? `/img/display/${photoId}`;
+export const originalUrl = (photoId: string) =>
+  window.__yamalogDemoImages__?.[photoId]?.display ?? `/img/original/${photoId}`;

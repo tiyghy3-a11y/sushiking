@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, thumbUrl } from '../lib/api';
 import {
   formatDateRange,
   formatDistance,
@@ -65,7 +65,7 @@ export function ActivityDetail() {
         lng: p.lng as number,
         className: p.coord_source === 'interpolated' ? 'photo-pin interpolated' : 'photo-pin',
         title: `${formatTime(p.taken_at)}`,
-        popupHtml: `<img src="/img/thumb/${p.id}" style="width:160px;display:block;border-radius:8px" />
+        popupHtml: `<img src="${thumbUrl(p.id)}" style="width:160px;display:block;border-radius:8px" />
           <div style="font-size:12px;margin-top:6px">${formatTime(p.taken_at)} · ${p.coord_source}${
             p.altitude != null ? ` · ${Math.round(p.altitude)}m` : ''
           }</div>`,

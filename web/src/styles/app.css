@@ -714,6 +714,17 @@ label.field > span {
   color: var(--ink-muted-48);
 }
 
+/* デモビルドだけで使う告知帯。クロームなので影は付けない */
+.demo-banner {
+  background: var(--canvas-parchment);
+  color: var(--ink-muted-80);
+  padding: 10px max(var(--space-md), env(safe-area-inset-left));
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: -0.12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
 /* ---------- スマホ（主用途） ---------- */
 @media (max-width: 734px) {
   /* 写真は2列、密度優先の面（未分類トレイ・取り込み）は3列 */
