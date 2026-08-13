@@ -2,6 +2,11 @@
 
 Cloudflare Workers に載せ、**自分が指定したメールアドレスだけ**が使える状態にして、iPhoneのホーム画面から開けるようにするまでの手順。
 
+> **デプロイ済み（2026-08-13）**: <https://yamalog.tiyg-hy-3.workers.dev>
+> 画像は D1 に保存する構成（`PHOTO_STORAGE="d1"`、原本は保存しない）なので R2 は不要。
+> 残っているのは[手順4](#4-workersdev-に-cloudflare-access-をかける)（Access）と[手順5](#5-worker-側にも許可リストを渡す)（secret 3つ）だけ。
+> それが済むまで Worker は全リクエストに 503 を返すので、中身は誰にも見えない。
+
 **独自ドメインは不要。** `workers.dev` の URL に Cloudflare Access を直接かけられる（ダッシュボードの Worker 設定に「Enable Cloudflare Access」がある）。Cloudflare 側の案内も「Access を有効にしたうえで、Worker 内で `aud` と JWKS を使って JWT を検証すること」で、その検証は `src/lib/access.ts` に実装済み。追加のコードは要らない。
 
 独自ドメインで受けたい場合は末尾の[付録](#付録独自ドメインで受ける場合)を参照。

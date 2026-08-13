@@ -1,6 +1,6 @@
 # YamaLog 引き継ぎメモ（Phase 0 時点）
 
-写真のEXIFだけで山行記録を成立させる個人用アーカイブ。SPEC.md の Phase 0 をひととおり実装し、ローカルで動作確認済み。**まだ本番デプロイはしていない。**
+写真のEXIFだけで山行記録を成立させる個人用アーカイブ。SPEC.md の Phase 0 をひととおり実装し、ローカルで動作確認済み。**Cloudflare にデプロイ済み**（<https://yamalog.tiyg-hy-3.workers.dev>）だが、Access と secret が未設定のため全リクエストに503を返す状態。
 
 このファイルは別の場所でプランを練るための材料集。仕様の正典は [SPEC.md](./SPEC.md)、UI指針は [DESIGN.md](./DESIGN.md)、デプロイ手順は [DEPLOY.md](./DEPLOY.md)。
 
@@ -79,12 +79,13 @@ UIを1枚のHTML（2.8MB）に固めたもの。API・DB・R2の代わりにペ�
 | 8 | ホーム進捗マップと山ページ | 完了 |
 | 9 | CLI一括投入スクリプト | 完了 |
 | 10 | 過去写真の実データ投入と判定半径チューニング | **未着手**（手元作業） |
-| — | 認証・デプロイ準備（DEPLOY.md） | 完了（**未デプロイ**。ドメイン不要で workers.dev + Access に確定） |
+| — | 認証・デプロイ準備（DEPLOY.md） | 完了 |
+| — | Cloudflare へのデプロイ | 完了（<https://yamalog.tiyg-hy-3.workers.dev>。画像は D1 保存＝R2不要。**Access と secret 3つが未設定なので全リクエスト503**） |
 | — | スマホ最適化・ホーム画面対応 | 完了（実機Safari未検証） |
 
 ### テストと検証
 
-- ユニットテスト **54件**（距離・補間・統計・Access検証・DEMの山頂探索・地名検索の候補選択）— `npm test`
+- ユニットテスト **83件**（距離・補間・統計・Access検証・DEMの山頂探索・地名検索の候補選択）— `npm test`
 - ローカル `wrangler dev` + D1/R2 に対する E2E 26アサーション（取り込み→判定→補間→統計→削除まで）
 - Chromium で全ルート描画確認、iPhone相当（390×844）で横スクロールなし・44pxタップ対象を確認
 - 認証の fail-closed（設定なしで HTML/JS/manifest すべて503）をローカルで確認
@@ -166,7 +167,7 @@ GET    /img/{thumb|display|original}/:id
 | `interpolated` は分析から除外 | 標高グラフ・距離・ペース・累積標高・山判定は `exif` のみ。混ぜると数値が汚れる |
 | 補間の閾値 2時間 / 30分 | 前後2点が2時間超なら補間しない。系列外は最近傍30分以内なら座標コピー |
 | 累積標高は移動中央値(window=5)後に+10m以上のみ加算 | GPSノイズの切り捨て。**写真の間の起伏は取りこぼすので実際より小さく出る**（UIに注記済み） |
-| 原本は無加工でR2に保存 | 表示用1600px・サムネ400pxを別途生成 |
+| 既定は原本を保存しない（`PHOTO_STORAGE="d1"`） | R2 の有効化には支払い方法の登録が必要なため、表示用1600px・サムネ400pxだけを D1 に入れる構成を既定にした。EXIF抽出はブラウザ側で終わっているので山判定・地図・統計は変わらない。原本は端末の写真ライブラリに残す。R2 を使う場合は `wrangler.toml` の `r2_buckets` を有効化して `PHOTO_STORAGE="r2"` |
 | `run_worker_first = true` | `[assets]` は既定でアセットをWorkerより先に返し、アプリシェルとJSが誰でも取れてしまう。実際に200が返るのを確認して塞いだ |
 | `preview_urls = false` | Access は workers.dev の本体URLにかかる。Preview URL は対象外なので、開いていると認証を迂回する入口になる |
 | 座標の確定は地名検索でなく標高データ | 地名検索は山頂ではなく代表点を返す（「富士山」の候補に山頂から約10kmの点が並ぶ）。DEMから「標高が一致する局所最高点」を探すほうが確実 |
@@ -262,7 +263,7 @@ npm run start:lan          # スマホ実機から http://<PCのIP>:8787
 # 開発
 npm run dev:worker         # :8787（API）
 npm run dev                # :5173（Vite HMR、/api と /img をプロキシ）
-npm test                   # ユニットテスト35件
+npm test                   # ユニットテスト83件
 npm run typecheck          # Worker / web / scripts の3プロジェクト
 
 # データ
