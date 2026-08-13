@@ -113,7 +113,7 @@ npm run verify:coords -- --write   # 山頂に合わせて CSV を書き換え�
 
 - HEICは**まずブラウザのネイティブデコードを試す**。iOS Safariは読めるので、その場合1.3MBの `heic2any` を読み込まない
 - EXIF Orientation付きの写真は `<img>` 経由でデコードする。`createImageBitmap` の `imageOrientation` オプションは Safari 16.4 未満で無視され、iPhoneの縦位置写真が横倒しになるため
-- ブラウザからの取り込みは**一度に60枚まで**（解析結果をメモリに抱えるため）。それ以上はCLIか分割で
+- ブラウザからの取り込みは**一度に500枚まで**。6枚ずつ「解析→送信→メモリ解放」を繰り返すので、枚数が増えてもメモリは増えない。数千枚の初回投入はCLI（`scripts/bulk-import.ts`）で
 
 ## 写真の運用ルール
 

@@ -6,19 +6,66 @@ import { formatOffset } from '../lib/format';
 import { buildUploadForm, preparePhoto, runPool, type PreparedPhoto } from '../lib/photo-pipeline';
 import type { AppConfig, Contributor } from '../lib/types';
 
-type Phase = 'idle' | 'preparing' | 'ready' | 'uploading' | 'done';
+type Phase = 'idle' | 'running' | 'done';
 
-interface Result {
+interface Tally {
   uploaded: number;
   duplicated: number;
   failed: number;
+  readFailed: number;
   noExifTime: number;
   noCoord: number;
 }
 
-const UPLOAD_CONCURRENCY = 4;
-/** スマホのメモリで安全に扱える上限。超える分はCLIか分割で入れる */
-const MAX_FILES_PER_BATCH = 60;
+const PREPARE_CONCURRENCY = 2;
+const UPLOAD_CONCURRENCY = 3;
+/**
+ * 解析結果（表示用＋サムネイル）を同時にメモリへ載せる枚数。
+ * 全部まとめて解析してから送ると iPhone ではタブごと落ちるので、
+ * この単位で「解析 → 送信 → 解放」を繰り返す。枚数の上限ではない。
+ */
+const CHUNK_SIZE = 6;
+/** 1回の取り込みで扱う上限。これを超える初回投入は scripts/bulk-import.ts の領分 */
+const MAX_FILES = 500;
+/** 解析済みプレビューを画面に残す枚数（残りは即座に解放する） */
+const PREVIEW_LIMIT = 12;
+
+const emptyTally = (): Tally => ({
+  uploaded: 0,
+  duplicated: 0,
+  failed: 0,
+  readFailed: 0,
+  noExifTime: 0,
+  noCoord: 0,
+});
+
+/**
+ * 電波が切れがちな山間部や、iPhone の省電力による一時的な失敗を拾い直す。
+ * 認証切れだけは再試行しても無駄なので即座に投げ直す（api 側が再読み込みに乗せる）。
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      if ((e as Error).message.includes('サインイン')) throw e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 600 * 2 ** i));
+    }
+  }
+  throw lastError;
+}
+
+/** 取り込み中に画面が消えると処理が止まるので、可能なら画面の点灯を維持する */
+async function acquireWakeLock(): Promise<{ release: () => void }> {
+  try {
+    const sentinel = await navigator.wakeLock?.request('screen');
+    return { release: () => void sentinel?.release().catch(() => {}) };
+  } catch {
+    return { release: () => {} };
+  }
+}
 
 export function Import() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -27,9 +74,12 @@ export function Import() {
   const [newContributor, setNewContributor] = useState('');
   const [offsetSec, setOffsetSec] = useState(0);
   const [phase, setPhase] = useState<Phase>('idle');
-  const [prepared, setPrepared] = useState<PreparedPhoto[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [step, setStep] = useState<'解析中' | 'アップロード中'>('解析中');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [result, setResult] = useState<Result | null>(null);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [tally, setTally] = useState<Tally | null>(null);
+  const [failures, setFailures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -52,49 +102,37 @@ export function Import() {
       .catch(() => setContributors([]));
   }, []);
 
-  const handleFiles = async (files: File[]) => {
-    if (files.length === 0) return;
-    // 解析結果（原本＋表示用＋サムネ）をメモリに抱えるので、
-    // スマホで大量に選ぶとタブごと落ちる。分割を促す。
-    if (files.length > MAX_FILES_PER_BATCH) {
-      setError(
-        `一度に扱えるのは${MAX_FILES_PER_BATCH}枚までです（メモリの都合）。` +
-          `分けて取り込むか、数千枚の初回投入は scripts/bulk-import.ts を使ってください。`,
-      );
-      return;
-    }
-    setPhase('preparing');
-    setError(null);
-    setResult(null);
-    setProgress({ done: 0, total: files.length });
+  const handleFiles = (selected: File[]) => {
+    if (selected.length === 0) return;
+    setError(
+      selected.length > MAX_FILES
+        ? `一度に扱えるのは${MAX_FILES}枚までです。分けて取り込むか、数千枚の初回投入は scripts/bulk-import.ts を使ってください。`
+        : null,
+    );
+    if (selected.length > MAX_FILES) return;
 
-    const out: PreparedPhoto[] = [];
-    let failed = 0;
-    // EXIF抽出・HEIC変換・リサイズはすべてブラウザ側で行う
-    await runPool(files, 2, async (file) => {
-      try {
-        out.push(await preparePhoto(file));
-      } catch (e) {
-        failed++;
-        console.error(file.name, e);
-      }
-      setProgress((p) => ({ ...p, done: p.done + 1 }));
-    });
-
-    setPrepared(out);
-    setResult({
-      uploaded: 0,
-      duplicated: 0,
-      failed,
-      noExifTime: out.filter((p) => p.meta.time_source !== 'exif').length,
-      noCoord: out.filter((p) => p.meta.coord_source !== 'exif').length,
-    });
-    setPhase('ready');
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setPreviews([]);
+    setFiles(selected);
+    setTally(null);
+    setFailures([]);
+    setPhase('idle');
+    setProgress({ done: 0, total: selected.length });
   };
 
-  const upload = async () => {
-    setPhase('uploading');
+  /**
+   * 解析と送信を CHUNK_SIZE 枚ずつ交互に回す。
+   * 全部解析してから送る作りだと、枚数に比例してメモリを食い、iPhone では
+   * 途中でタブが落ちて「何も起きない」状態になる。少しずつ解放しながら進める。
+   */
+  const run = async () => {
+    setPhase('running');
     setError(null);
+    const wakeLock = await acquireWakeLock();
+    const totals = emptyTally();
+    const failedNames: string[] = [];
+    let kept = 0; // 画面に残しているプレビューの数
+
     try {
       let contributor = contributorId;
       if (!contributor && newContributor.trim()) {
@@ -107,53 +145,93 @@ export function Import() {
         setContributors((prev) => [...prev, r.contributor]);
       }
 
-      // 既に取り込み済みの hash は投げる前に除外する
-      const { existing } = await api.checkHashes(prepared.map((p) => p.hash));
-      const existingSet = new Set(existing);
-      const targets = prepared.filter((p) => !existingSet.has(p.hash));
-
       const batch = await api.createBatch({
         contributor_id: contributor || null,
         time_offset_sec: offsetSec,
       });
 
-      let uploaded = 0;
-      let duplicated = existingSet.size;
-      let failed = 0;
-      setProgress({ done: 0, total: targets.length });
+      setProgress({ done: 0, total: files.length });
 
-      await runPool(targets, UPLOAD_CONCURRENCY, async (item) => {
-        try {
-          const res = await api.upload(
-            buildUploadForm(item, {
-              contributor_id: contributor || null,
-              batch_id: batch.batch.id,
-              time_offset_sec: offsetSec,
-              keepsOriginal: config?.keeps_original ?? true,
-            }),
-          );
-          if (res.skipped) duplicated++;
-          else uploaded++;
-        } catch (e) {
-          failed++;
-          console.error(item.name, e);
+      for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+        const chunk = files.slice(i, i + CHUNK_SIZE);
+
+        // 1. 解析（EXIF抽出・HEIC変換・リサイズ。すべてブラウザ側）
+        setStep('解析中');
+        const prepared: PreparedPhoto[] = [];
+        await runPool(chunk, PREPARE_CONCURRENCY, async (file) => {
+          try {
+            prepared.push(await preparePhoto(file));
+          } catch (e) {
+            totals.readFailed++;
+            failedNames.push(file.name);
+            console.error(file.name, e);
+          }
+        });
+
+        for (const p of prepared) {
+          if (p.meta.time_source !== 'exif') totals.noExifTime++;
+          if (p.meta.coord_source !== 'exif') totals.noCoord++;
         }
-        setProgress((p) => ({ ...p, done: p.done + 1 }));
-      });
 
-      setResult({
-        uploaded,
-        duplicated,
-        failed,
-        noExifTime: prepared.filter((p) => p.meta.time_source !== 'exif').length,
-        noCoord: prepared.filter((p) => p.meta.coord_source !== 'exif').length,
-      });
+        // 2. 取り込み済みは投げる前に除外する
+        let targets = prepared;
+        try {
+          const { existing } = await api.checkHashes(prepared.map((p) => p.hash));
+          const existingSet = new Set(existing);
+          totals.duplicated += existingSet.size;
+          targets = prepared.filter((p) => !existingSet.has(p.hash));
+        } catch {
+          // 重複チェックに失敗しても送信は続ける（Worker 側でも hash で弾かれる）
+        }
+
+        // 3. 送信
+        setStep('アップロード中');
+        await runPool(targets, UPLOAD_CONCURRENCY, async (item) => {
+          try {
+            const res = await withRetry(() =>
+              api.upload(
+                buildUploadForm(item, {
+                  contributor_id: contributor || null,
+                  batch_id: batch.batch.id,
+                  time_offset_sec: offsetSec,
+                  keepsOriginal: config?.keeps_original ?? true,
+                }),
+              ),
+            );
+            if (res.skipped) totals.duplicated++;
+            else totals.uploaded++;
+          } catch (e) {
+            totals.failed++;
+            failedNames.push(item.name);
+            console.error(item.name, e);
+          }
+        });
+
+        // 4. このかたまりで確保したメモリを手放す
+        const keepUrls: string[] = [];
+        for (const p of prepared) {
+          if (kept < PREVIEW_LIMIT) {
+            keepUrls.push(p.previewUrl);
+            kept++;
+          } else {
+            URL.revokeObjectURL(p.previewUrl);
+          }
+        }
+        if (keepUrls.length) setPreviews((prev) => [...prev, ...keepUrls]);
+
+        setTally({ ...totals });
+        setFailures([...failedNames]);
+        setProgress({ done: Math.min(i + chunk.length, files.length), total: files.length });
+      }
+
       setPhase('done');
-      prepared.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-      setPrepared([]);
+      setFiles([]);
     } catch (e) {
       setError((e as Error).message);
-      setPhase('ready');
+      setTally({ ...totals });
+      setPhase('idle');
+    } finally {
+      wakeLock.release();
     }
   };
 
@@ -177,9 +255,11 @@ export function Import() {
           )}
           <p className="notice">
             画像処理はすべてブラウザ側で行います（EXIF抽出・HEIC変換・長辺1600px/400pxの生成）。
+            枚数が多いときは{CHUNK_SIZE}枚ずつ自動で解析・送信するので、そのまま待っていれば進みます。
             数千枚の初回投入は <code>scripts/bulk-import.ts</code> を使ってください。
             取り込んだ写真は必ず未分類トレイに入り、山行への割り当ては後段で行います。
           </p>
+          {error && <p className="notice">{error}</p>}
 
           <div
             onDragOver={(e) => {
@@ -203,12 +283,13 @@ export function Import() {
           >
             <p className="t-lead">写真を選ぶ</p>
             <p className="t-caption muted">
-              JPEG / HEIC / PNG · 一度に{MAX_FILES_PER_BATCH}枚まで（PCではドラッグ&ドロップも可）
+              JPEG / HEIC / PNG · 一度に{MAX_FILES}枚まで（PCではドラッグ&ドロップも可）
             </p>
             <button
               type="button"
               className="btn"
               style={{ marginTop: 'var(--space-md)' }}
+              disabled={phase === 'running'}
               onClick={() => inputRef.current?.click()}
             >
               写真を選択
@@ -219,7 +300,11 @@ export function Import() {
               multiple
               accept="image/*,.heic,.heif"
               style={{ display: 'none' }}
-              onChange={(e) => void handleFiles([...(e.target.files ?? [])])}
+              onChange={(e) => {
+                handleFiles([...(e.target.files ?? [])]);
+                // 同じ写真を選び直せるようにする（iOS では値が残ると再選択が効かない）
+                e.target.value = '';
+              }}
             />
           </div>
 
@@ -257,56 +342,60 @@ export function Import() {
 
           <OffsetHelper offsetSec={offsetSec} onChange={setOffsetSec} />
 
-          {(phase === 'preparing' || phase === 'uploading') && (
+          {phase === 'idle' && files.length > 0 && (
             <div style={{ marginTop: 'var(--space-lg)' }}>
-              <p className="t-caption muted">
-                {phase === 'preparing' ? '解析中' : 'アップロード中'} {progress.done} / {progress.total}
-              </p>
-              <div className="progress-bar">
-                <span style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
-              </div>
-            </div>
-          )}
-
-          {phase === 'ready' && result && (
-            <div style={{ marginTop: 'var(--space-lg)' }}>
-              <h2 className="t-section">解析結果</h2>
-              <p className="t-caption muted">
-                {prepared.length}枚を解析しました（EXIF時刻なし {result.noExifTime}枚 / EXIF座標なし{' '}
-                {result.noCoord}枚 / 読み込み失敗 {result.failed}枚）。
-              </p>
-              <div className="photo-grid dense" style={{ marginTop: 'var(--space-sm)' }}>
-                {prepared.slice(0, 24).map((p) => (
-                  <div key={p.hash} className="photo-cell">
-                    <img src={p.previewUrl} alt="" />
-                    {p.meta.coord_source !== 'exif' && (
-                      <span className="badges">
-                        <span className="chip chip-dim">座標なし</span>
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {error && <p className="notice" style={{ marginTop: 'var(--space-sm)' }}>{error}</p>}
-              <button type="button" className="btn" style={{ marginTop: 'var(--space-lg)' }} onClick={upload}>
-                {prepared.length}枚をアップロード
+              <p className="t-caption muted">{files.length}枚を選択しました。</p>
+              <button type="button" className="btn" style={{ marginTop: 'var(--space-md)' }} onClick={run}>
+                {files.length}枚を取り込む
               </button>
             </div>
           )}
 
-          {phase === 'done' && result && (
+          {phase === 'running' && (
             <div style={{ marginTop: 'var(--space-lg)' }}>
-              <h2 className="t-section">取り込み完了</h2>
+              <p className="t-caption muted">
+                {step} {progress.done} / {progress.total}
+              </p>
+              <div className="progress-bar">
+                <span style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
+              </div>
+              <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
+                この画面を開いたままにしてください。他のアプリに切り替えると止まることがあります。
+              </p>
+            </div>
+          )}
+
+          {tally && (
+            <div style={{ marginTop: 'var(--space-lg)' }}>
+              <h2 className="t-section">{phase === 'done' ? '取り込み完了' : '取り込み状況'}</h2>
               <p className="t-caption">
-                成功 {result.uploaded}枚 / 取り込み済みのためスキップ {result.duplicated}枚 / 失敗{' '}
-                {result.failed}枚
+                成功 {tally.uploaded}枚 / 取り込み済みのためスキップ {tally.duplicated}枚 / 失敗{' '}
+                {tally.failed + tally.readFailed}枚
               </p>
               <p className="t-caption muted">
-                EXIF時刻なし {result.noExifTime}枚 · EXIF座標なし {result.noCoord}枚
+                EXIF時刻なし {tally.noExifTime}枚 · EXIF座標なし {tally.noCoord}枚
               </p>
-              <Link className="btn" style={{ marginTop: 'var(--space-md)' }} to="/inbox">
-                未分類トレイで整理する
-              </Link>
+              {failures.length > 0 && (
+                <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
+                  失敗: {failures.slice(0, 5).join('、')}
+                  {failures.length > 5 ? ` ほか${failures.length - 5}件` : ''}
+                  （もう一度同じ写真を選び直せば、成功済みの分は自動でスキップされます）
+                </p>
+              )}
+              {previews.length > 0 && (
+                <div className="photo-grid dense" style={{ marginTop: 'var(--space-sm)' }}>
+                  {previews.map((url) => (
+                    <div key={url} className="photo-cell">
+                      <img src={url} alt="" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {phase === 'done' && (
+                <Link className="btn" style={{ marginTop: 'var(--space-md)' }} to="/inbox">
+                  未分類トレイで整理する
+                </Link>
+              )}
             </div>
           )}
         </div>
