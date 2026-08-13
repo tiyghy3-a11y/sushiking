@@ -33,7 +33,9 @@ images.get('/:variant/:id', async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  // 個人の写真なので共有キャッシュには載せない（SPEC の public から private に変更）。
+  // photo_id は不変で中身も差し替えないため、ブラウザ側は永続キャッシュしてよい。
+  headers.set('Cache-Control', 'private, max-age=31536000, immutable');
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', variant === 'original' ? photo.mime : 'image/jpeg');
   }

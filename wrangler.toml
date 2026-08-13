@@ -2,11 +2,25 @@ name = "yamalog"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+# *.workers.dev は Cloudflare Access を適用できない（Accessは自分のゾーンの
+# ホスト名に対して設定する）ため、公開せず独自ドメインだけで受ける。
+# ここを true に戻すと Access を通らない入口ができる。
+# なお Worker 側でもトークンを検証しているので、仮に開いていても素通りはしない。
+workers_dev = false
+
+# 独自ドメインを割り当てる（DEPLOY.md 参照）。ゾーンをCloudflareに載せてから設定する
+# [[routes]]
+# pattern = "yamalog.example.com"
+# custom_domain = true
+
 # フロント（Vite ビルド成果物）を同一 Worker から配信する
 [assets]
 directory = "./dist/web"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# 既定ではアセットが Worker より先に配信され、認証ミドルウェアを通らない。
+# アプリシェルやJSも許可ユーザーだけに配りたいので、必ず Worker を先に走らせる。
+run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"
@@ -18,6 +32,12 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "yamalog-photos"
+
+# 認証の設定値は wrangler secret put で入れる（メールアドレスをリポジトリに置かない）:
+#   ACCESS_TEAM_DOMAIN   例: your-team.cloudflareaccess.com
+#   ACCESS_AUD           Access アプリケーションの Audience Tag
+#   ALLOWED_EMAILS       利用を許可するメールアドレス（カンマ区切り）
+# 未設定のまま本番に出すと、Worker は 503 を返して閉じたままになる。
 
 [observability]
 enabled = true

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1d1d1f"/>
+  <g transform="translate(0 0) scale(1)">
+    <path d="M56 400 L200 168 L280 296 L332 216 L456 400 Z" fill="#ffffff"/>
+    <!-- 主峰の雪冠だけを Action Blue に。稜線とぴったり合わせる -->
+    <path d="M200 168 L241 234 L159 234 Z" fill="#0066cc"/>
+  </g>
+</svg>

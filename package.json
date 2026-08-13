@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "setup:local": "npm run db:migrate:local && npm run seed:local",
-    "start": "npm run build && wrangler dev",
-    "start:lan": "npm run build && wrangler dev --ip 0.0.0.0",
+    "setup:local": "tsx scripts/ensure-dev-vars.ts && npm run db:migrate:local && npm run seed:local",
+    "start": "tsx scripts/ensure-dev-vars.ts && npm run build && wrangler dev",
+    "start:lan": "tsx scripts/ensure-dev-vars.ts && npm run build && wrangler dev --ip 0.0.0.0",
     "demo": "tsx scripts/demo-seed.ts",
     "demo:reset": "tsx scripts/demo-seed.ts --reset",
     "dev": "vite",
@@ -20,7 +20,9 @@
     "seed:coords": "tsx scripts/fetch-coords.ts",
     "seed:local": "tsx scripts/seed.ts --local",
     "seed": "tsx scripts/seed.ts --remote",
-    "bulk-import": "tsx scripts/bulk-import.ts"
+    "bulk-import": "tsx scripts/bulk-import.ts",
+    "icons": "tsx scripts/make-icons.ts",
+    "build:demo": "tsx scripts/build-demo.ts"
   },
   "dependencies": {
     "hono": "^4.6.14"

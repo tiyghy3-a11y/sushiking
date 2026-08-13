@@ -5,6 +5,15 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
+
+  /** Cloudflare Access のチームドメイン（例: your-team.cloudflareaccess.com） */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** Access アプリケーションの Audience Tag */
+  ACCESS_AUD?: string;
+  /** 利用を許可するメールアドレス（カンマ区切り） */
+  ALLOWED_EMAILS?: string;
+  /** ローカル開発でのみ "1"。.dev.vars に置く（本番には存在しない） */
+  ACCESS_DISABLED?: string;
 }
 
 export interface MountainRow {

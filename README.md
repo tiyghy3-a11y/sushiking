@@ -62,12 +62,13 @@ npm run dev:worker      # http://127.0.0.1:8787
 npm run dev             # http://127.0.0.1:5173（/api と /img は :8787 にプロキシ）
 ```
 
-本番へは `npm run db:migrate` → `npm run seed` → `npx wrangler deploy`。
-D1のマイグレーションは事故を避けるためGitHub Actionsでは自動実行しない。
+本番へのデプロイ手順（独自ドメイン・Cloudflare Access・iPhoneのホーム画面追加まで）は **[DEPLOY.md](./DEPLOY.md)** にまとめてある。
 
-### Cloudflare Access
+### 認証
 
-個人利用なので、デプロイ後に Cloudflare Zero Trust で Worker のドメインに Access アプリケーションを作り、自分のメールアドレスだけを許可する。アプリ側に認証コードは持たせていない。
+Cloudflare Access で入口を絞り、**Worker 側でも Access のトークンを検証する**（署名・aud・有効期限・メール許可リスト）。`ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ALLOWED_EMAILS` が未設定だと全リクエストに 503 を返して閉じたままになるので、設定漏れで公開されることはない。
+
+ローカル開発では Access が前段にいないため `.dev.vars` の `ACCESS_DISABLED="1"` で外す（`npm run setup:local` が作る。コミットされないので本番には存在しない）。
 
 ## 百名山マスタの座標について
 
@@ -91,6 +92,7 @@ D1のマイグレーションは事故を避けるためGitHub Actionsでは自�
 - **ライトボックスは横スワイプで写真送り。** ダブルタップはピンチズームと競合するので使わない。選択モード中の拡大は専用ボタン（⤢）
 - **ノッチ・ホームインジケータを避ける。** `env(safe-area-inset-*)` と `100dvh`（URLバーの伸縮で見切れないように）
 - **フォームは17px。** iOS Safari がフォーカス時に自動ズームする閾値（16px）を下回らないこと
+- **ホーム画面に追加して使える。** `manifest.webmanifest` で `display: standalone`、ステータスバーはナビと同じ黒、アイコンは `npm run icons` で生成（追加手順は DEPLOY.md）
 - **横スクロールを発生させない。** 幅の広い表は `.table-scroll` で表の中だけ流す
 - 地図のズームボタンはスマホでは出さない（29px角で小さいため、ピンチ操作に任せる）
 

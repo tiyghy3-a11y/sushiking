@@ -14,5 +14,6 @@ dist/
 *.heic
 *.png
 !web/src/assets/**
+!web/public/*.png
 failed.json
 seeds/hyakumeizan.sql
