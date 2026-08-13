@@ -5,6 +5,7 @@ import { formatDate } from '../lib/format';
 import { Modal } from '../components/Modal';
 import { MountainSelect, type MountainLink } from '../components/MountainPicker';
 import { PhotoGrid } from '../components/PhotoGrid';
+import { runPool } from '../lib/photo-pipeline';
 import type { ActivityListItem, Contributor, SuggestResult, UnassignedGroup } from '../lib/types';
 
 /**
@@ -19,6 +20,7 @@ export function Inbox() {
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   const [creatingFor, setCreatingFor] = useState<{ key: string; date: string | null; photoIds: string[] } | null>(null);
   const [addingFor, setAddingFor] = useState<{ photoIds: string[] } | null>(null);
+  const [deletingFor, setDeletingFor] = useState<{ photoIds: string[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,8 +110,28 @@ export function Inbox() {
                     >
                       既存の山行に追加
                     </button>
+                    {/*
+                      削除だけは「選択中の写真」しか対象にしない。
+                      他の操作と同じ「未選択なら全件」にすると、日付ごと消す事故が起きる。
+                    */}
+                    {chosen && chosen.size > 0 && (
+                      <button
+                        type="button"
+                        className="link t-caption"
+                        style={{ minHeight: 44, padding: '0 var(--space-xs)' }}
+                        onClick={() => setDeletingFor({ photoIds: [...chosen] })}
+                      >
+                        {chosen.size}枚を削除
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {(!chosen || chosen.size === 0) && (
+                  <p className="t-fine muted" style={{ marginBottom: 'var(--space-xs)' }}>
+                    写真をタップして選ぶと、削除できます。
+                  </p>
+                )}
 
                 {!g.date && (
                   <p className="notice" style={{ marginBottom: 'var(--space-sm)' }}>
@@ -143,6 +165,17 @@ export function Inbox() {
         />
       )}
 
+      {deletingFor && (
+        <DeletePhotosModal
+          photoIds={deletingFor.photoIds}
+          onClose={() => setDeletingFor(null)}
+          onDeleted={async () => {
+            setDeletingFor(null);
+            await load();
+          }}
+        />
+      )}
+
       {addingFor && (
         <Modal title="既存の山行に追加" onClose={() => setAddingFor(null)}>
           <p className="t-caption muted">{addingFor.photoIds.length}枚を追加します。</p>
@@ -171,6 +204,83 @@ export function Inbox() {
         </Modal>
       )}
     </>
+  );
+}
+
+/**
+ * 写真の削除。間違えて取り込んだ分をここで取り除く。
+ * サーバ側は1枚ずつの DELETE なので、少しだけ並列にして進捗を出す。
+ */
+function DeletePhotosModal({
+  photoIds,
+  onClose,
+  onDeleted,
+}: {
+  photoIds: string[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  // 失敗した分だけ残す。消えた写真を再度 DELETE すると 404 になるため、やり直しは残りだけを対象にする
+  const [pending, setPending] = useState<string[]>(photoIds);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(0);
+  const [deleted, setDeleted] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    setDone(0);
+    const failures: string[] = [];
+    await runPool(pending, 4, async (id) => {
+      try {
+        await api.deletePhoto(id);
+      } catch (e) {
+        failures.push(id);
+        console.error(id, e);
+      }
+      setDone((n) => n + 1);
+    });
+
+    setDeleted((n) => n + (pending.length - failures.length));
+    setPending(failures);
+    if (failures.length > 0) {
+      setError(`${failures.length}枚を削除できませんでした。通信を確認してもう一度お試しください。`);
+      setBusy(false);
+      return;
+    }
+    onDeleted();
+  };
+
+  // 一部だけ消して閉じた場合も一覧を取り直す（消えた写真が残って見えないように）
+  const close = () => (deleted > 0 ? onDeleted() : onClose());
+
+  return (
+    <Modal
+      title="写真を削除"
+      onClose={busy ? () => {} : close}
+      footer={
+        <>
+          <button type="button" className="btn-pearl" disabled={busy} onClick={close}>
+            {deleted > 0 ? '閉じる' : 'キャンセル'}
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={remove}>
+            {busy ? `削除中… ${done} / ${pending.length}` : `${pending.length}枚を削除する`}
+          </button>
+        </>
+      }
+    >
+      {error && <p className="notice">{error}</p>}
+      <p className="t-caption">
+        選択した{pending.length}枚をこのアプリから削除します。<strong>元に戻せません。</strong>
+      </p>
+      <p className="t-caption muted" style={{ marginTop: 'var(--space-xs)' }}>
+        端末の写真ライブラリにある写真は消えません。必要になったら取り込み直せます。
+      </p>
+      {deleted > 0 && !busy && (
+        <p className="t-caption muted">{deleted}枚は削除済みです。残りだけをもう一度試せます。</p>
+      )}
+    </Modal>
   );
 }
 
