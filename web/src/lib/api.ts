@@ -1,3 +1,4 @@
+import { classifyNetworkFailure, classifyResponse } from './auth-recovery';
 import type {
   Activity,
   ActivityListItem,
@@ -11,18 +12,72 @@ import type {
   UnassignedGroup,
 } from './types';
 
+/** 再読み込みを1回に制限するフラグ（Access のログインに乗れないときのループ防止） */
+const REAUTH_FLAG = 'yamalog.reauth';
+
+const session = {
+  get(): boolean {
+    try {
+      return sessionStorage.getItem(REAUTH_FLAG) === '1';
+    } catch {
+      return false; // sessionStorage が使えない環境では諦める
+    }
+  },
+  set(value: boolean) {
+    try {
+      if (value) sessionStorage.setItem(REAUTH_FLAG, '1');
+      else sessionStorage.removeItem(REAUTH_FLAG);
+    } catch {
+      // 何もしない
+    }
+  },
+};
+
+/**
+ * Access のセッション切れ。ページを再読み込みしてブラウザ遷移に乗せ、
+ * Access のログイン画面を出させる（fetch のままでは別オリジンで CORS に落ちる）。
+ */
+function reauthenticate(): never {
+  if (!window.__yamalogDemo__ && !session.get()) {
+    session.set(true);
+    window.location.reload();
+  }
+  throw new Error('サインインが必要です。ページを再読み込みしてください。');
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers:
-      init?.body instanceof FormData
-        ? init.headers
-        : { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers:
+        init?.body instanceof FormData
+          ? init.headers
+          : { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch {
+    // Access のログインへリダイレクトされると別オリジンになり、ここに落ちる
+    if (classifyNetworkFailure(navigator.onLine) === 'reauth') reauthenticate();
+    throw new Error('通信できませんでした。接続を確認してもう一度お試しください。');
+  }
+
+  const action = classifyResponse({
+    status: res.status,
+    ok: res.ok,
+    redirected: res.redirected,
+    contentType: res.headers.get('content-type'),
   });
-  if (!res.ok) {
+
+  if (action === 'reauth') reauthenticate();
+  if (action === 'forbidden') {
+    throw new Error('このアカウントでは利用できません（403）。許可リストを確認してください。');
+  }
+  if (action === 'error') {
     const text = await res.text();
     throw new Error(`${res.status} ${text.slice(0, 300)}`);
   }
+
+  session.set(false); // 通信できたのでフラグを戻す
   return (await res.json()) as T;
 }
 
