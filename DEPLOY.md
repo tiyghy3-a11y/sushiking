@@ -151,6 +151,33 @@ npm run verify:coords -- --write   # 山頂に合わせて CSV を書き換え�
 
 ---
 
+## GitHub Pages について（デモ限定）
+
+**本体は GitHub Pages では動かない。** Pages は静的ファイル配信しかできないため、以下が全部使えない。
+
+| 必要なもの | Pages では |
+|---|---|
+| API（Hono） | サーバーが無いので動かない |
+| D1（山行・写真のメタデータ） | 無い |
+| R2（写真の原本・表示用・サムネ） | 無い |
+| Cloudflare Access（利用者の制限） | Pages にアクセス制御は無い（public リポジトリなら誰でも閲覧できる） |
+
+置けるのは**インメモリのモックで動くデモ**だけ。データはページ内だけに存在し、リロードで消える。写真は合成画像で、実データは一切含まない。
+
+```bash
+npm run build:demo -- --standalone   # dist/demo-pages/ に完全なHTML一式が出る
+```
+
+公開は `.github/workflows/pages.yml`（push か手動実行）。**Settings → Pages → Source を「GitHub Actions」にしておく必要がある**（「Deploy from a branch」のままだとデプロイが失敗する）。
+
+公開先: `https://<ユーザー名>.github.io/<リポジトリ名>/`
+
+サブパス配信でも動くよう、参照は相対パスにし、manifest の `start_url` / `scope` も `./` にしてある。デモもホーム画面に追加できる（standalone表示・アイコンつき）ので、実機の見え方の確認には使える。
+
+**費用について。** 本体を載せる Cloudflare 側も無料枠で足りる（Workers 10万リクエスト/日、D1、Access 50ユーザーまで）。ただし R2 は初回有効化のときに支払い方法の登録を求められることがある。「無料で試す」目的なら Pages のデモで見た目と操作を確認し、写真を実際に入れる段階で Workers に載せるのが順番として楽。
+
+---
+
 ## 付録：独自ドメインで受ける場合
 
 `workers.dev` の URL が気になる、あるいは将来ドメインを移したいときは以下。Cloudflare Registrar なら .com が年10ドル程度で取れる。

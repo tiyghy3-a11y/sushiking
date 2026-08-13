@@ -1,0 +1,52 @@
+name: Deploy demo to Pages
+
+# 単一HTMLのデモだけを GitHub Pages に公開する。
+# 本体（API・D1・R2・Cloudflare Access）は静的ホスティングでは動かないので、
+# ここで配るのはインメモリのモックで動くデモに限られる。
+# **公開範囲は誰でもアクセス可能**。実データは一切含まない（写真は合成画像）。
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/repo-init-design-review-h8popj]
+    paths:
+      - 'web/**'
+      - 'src/lib/**'
+      - 'scripts/build-demo.ts'
+      - 'vite.demo.config.ts'
+      - '.github/workflows/pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 実行が重なったら新しいほうを通す
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx tsx scripts/build-demo.ts --standalone
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/demo-pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
