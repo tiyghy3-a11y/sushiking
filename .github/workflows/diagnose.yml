@@ -1,0 +1,44 @@
+name: Diagnose
+
+# 本番の Worker で何が起きているかを読むだけのワークフロー。
+# デプロイも設定変更も行わない（GET のみ）。
+# 使い方: Actions → Diagnose → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: '何分前までのログを見るか'
+        type: string
+        default: '120'
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Worker のエラーログを取得
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          set -u
+          NOW=$(date -u +%s)
+          FROM=$(( (NOW - MINUTES * 60) * 1000 ))
+          TO=$(( NOW * 1000 ))
+          echo "=== observability telemetry query ($MINUTES 分前から) ==="
+          curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/observability/telemetry/query" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"queryId\":\"diag\",\"timeframe\":{\"from\":${FROM},\"to\":${TO}},\"parameters\":{\"datasets\":[\"cloudflare-workers\"],\"filters\":[{\"key\":\"\$metadata.service\",\"operation\":\"eq\",\"type\":\"string\",\"value\":\"yamalog\"}]},\"limit\":100,\"view\":\"events\"}" \
+            | head -c 60000
+          echo
+          echo "=== GraphQL: 直近の invocation サマリ（成功/例外/超過） ==="
+          SINCE=$(date -u -d "-${MINUTES} minutes" +%Y-%m-%dT%H:%M:%SZ)
+          UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          curl -sS -X POST "https://api.cloudflare.com/client/v4/graphql" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"query{viewer{accounts(filter:{accountTag:\\\"${CLOUDFLARE_ACCOUNT_ID}\\\"}){workersInvocationsAdaptive(limit:100,filter:{scriptName:\\\"yamalog\\\",datetime_geq:\\\"${SINCE}\\\",datetime_leq:\\\"${UNTIL}\\\"}){sum{errors requests subrequests}quantiles{cpuTimeP50 cpuTimeP99 wallTimeP50 wallTimeP99}dimensions{outcome status datetimeMinute}}}}}\"}" \
+            | head -c 60000
+          echo
