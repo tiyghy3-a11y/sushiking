@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, thumbUrl } from '../lib/api';
-import { formatDateRange } from '../lib/format';
+import { api } from '../lib/api';
+import { ActivityCard } from '../components/ActivityCard';
 import type { ActivityListItem } from '../lib/types';
 
 export function Activities() {
@@ -55,26 +55,7 @@ export function Activities() {
               <p className="t-caption muted">{list.length}件</p>
               <div className="grid-cards" style={{ marginTop: 'var(--space-lg)' }}>
                 {list.map((a) => (
-                  <Link key={a.id} to={`/activities/${a.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                    <article className="card-flat">
-                      {a.thumb_photo_id ? (
-                        <img
-                          src={thumbUrl(a.thumb_photo_id)}
-                          alt=""
-                          style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', display: 'block' }}
-                        />
-                      ) : (
-                        <div style={{ aspectRatio: '4 / 3', background: 'var(--surface-tile-3)' }} />
-                      )}
-                      <div style={{ padding: 'var(--space-md)' }}>
-                        <p className="t-strong">{a.title}</p>
-                        <p className="t-caption muted">{formatDateRange(a.start_date, a.end_date)}</p>
-                        <p className="t-caption muted">
-                          {a.mountains.map((m) => m.name).join('・') || '山未設定'} · {a.photo_count}枚
-                        </p>
-                      </div>
-                    </article>
-                  </Link>
+                  <ActivityCard key={a.id} activity={a} />
                 ))}
               </div>
             </div>

@@ -56,6 +56,18 @@ export function Inbox() {
     });
   };
 
+  const toggleAll = (g: UnassignedGroup) => {
+    const key = keyOf(g);
+    setSelected((prev) => {
+      const current = prev[key];
+      const all = current && current.size === g.photos.length;
+      return { ...prev, [key]: all ? new Set<string>() : new Set(g.photos.map((p) => p.id)) };
+    });
+  };
+
+  // 選択は日付ごとに持つが、操作は日付をまたいでまとめて行える
+  const allSelected = Object.values(selected).flatMap((s) => [...s]);
+
   if (loading) return <section className="section canvas-light"><p className="empty">読み込み中…</p></section>;
 
   return (
@@ -83,55 +95,29 @@ export function Inbox() {
             const chosen = selected[key];
             return (
               <div key={key} style={{ marginBottom: 'var(--space-xxl)' }}>
-                <div className="row" style={{ justifyContent: 'space-between', marginBottom: 'var(--space-sm)' }}>
+                <div className="section-head">
                   <div>
-                    <h2 className="t-tagline">{g.date ? formatDate(g.date) : '日付不明'}</h2>
+                    <h2 className="t-section">{g.date ? formatDate(g.date) : '日付不明'}</h2>
                     <p className="t-caption muted">
                       {g.count}枚
-                      {chosen && chosen.size > 0 ? ` · ${chosen.size}枚を選択中` : ' · 全件が対象'}
+                      {chosen && chosen.size > 0 ? ` · ${chosen.size}枚を選択中` : ''}
                     </p>
                   </div>
-                  <div className="row">
+                  <div className="row" style={{ gap: 'var(--s2)' }}>
+                    <button type="button" className="btn-quiet btn-sm" onClick={() => toggleAll(g)}>
+                      {chosen && chosen.size === g.photos.length ? '選択を解除' : 'すべて選択'}
+                    </button>
                     {g.date && (
                       <button
                         type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          setCreatingFor({ key, date: g.date, photoIds: selectionOf(g) })
-                        }
+                        className="btn-quiet btn-sm"
+                        onClick={() => setCreatingFor({ key, date: g.date, photoIds: selectionOf(g) })}
                       >
-                        この日の写真で新しい山行を作成
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn-utility"
-                      onClick={() => setAddingFor({ photoIds: selectionOf(g) })}
-                    >
-                      既存の山行に追加
-                    </button>
-                    {/*
-                      削除だけは「選択中の写真」しか対象にしない。
-                      他の操作と同じ「未選択なら全件」にすると、日付ごと消す事故が起きる。
-                    */}
-                    {chosen && chosen.size > 0 && (
-                      <button
-                        type="button"
-                        className="link t-caption"
-                        style={{ minHeight: 44, padding: '0 var(--space-xs)' }}
-                        onClick={() => setDeletingFor({ photoIds: [...chosen] })}
-                      >
-                        {chosen.size}枚を削除
+                        この日で山行を作成
                       </button>
                     )}
                   </div>
                 </div>
-
-                {(!chosen || chosen.size === 0) && (
-                  <p className="t-fine muted" style={{ marginBottom: 'var(--space-xs)' }}>
-                    写真をタップして選ぶと、削除できます。
-                  </p>
-                )}
 
                 {!g.date && (
                   <p className="notice" style={{ marginBottom: 'var(--space-sm)' }}>
@@ -163,6 +149,27 @@ export function Inbox() {
             await load();
           }}
         />
+      )}
+
+      {/* 選択中だけ出る操作の帯。削除は必ずここから（未選択のまま日付ごと消す事故を防ぐ） */}
+      {allSelected.length > 0 && (
+        <div className="selection-bar">
+          <span className="t-caption-strong tabular">{allSelected.length}枚</span>
+          <button type="button" className="btn btn-sm" onClick={() => setAddingFor({ photoIds: allSelected })}>
+            山行に追加
+          </button>
+          <button
+            type="button"
+            className="btn-quiet btn-sm"
+            onClick={() => setDeletingFor({ photoIds: allSelected })}
+          >
+            削除
+          </button>
+          <span className="spacer" />
+          <button type="button" className="link t-caption" onClick={() => setSelected({})}>
+            解除
+          </button>
+        </div>
       )}
 
       {deletingFor && (

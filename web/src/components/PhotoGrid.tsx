@@ -65,9 +65,17 @@ export function PhotoGrid({
                 ⤢
               </button>
             )}
+            {/*
+              全セルに時刻・撮影者・座標を出すと、3列では文字がタイルを覆ってしまう。
+              時刻だけを常に出し、他は「言うべきことがあるとき」だけにする。
+              撮影者は、複数人いて、かつ密度の低いグリッドのときだけ。
+              未分類トレイ（3列）では文字が写真を覆ってしまう。
+            */}
             <span className="badges">
               {photo.taken_at && <span className="chip">{formatTime(photo.taken_at)}</span>}
-              {contributor && <span className="chip">{contributor}</span>}
+              {!dense && contributors.length > 1 && contributor && (
+                <span className="chip">{contributor}</span>
+              )}
               {photo.coord_source === 'none' && <span className="chip chip-dim">座標なし</span>}
               {photo.coord_source === 'interpolated' && <span className="chip chip-dim">補間</span>}
               {photo.is_favorite === 1 && <span className="chip">★</span>}

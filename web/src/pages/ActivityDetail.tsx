@@ -162,11 +162,9 @@ export function ActivityDetail() {
 
       <section className="section-tight canvas-light">
         <div className="wrap">
-          <h1 className="t-display">{activity.title}</h1>
-          <p className="t-lead muted" style={{ marginTop: 'var(--space-xs)' }}>
-            {formatDateRange(activity.start_date, activity.end_date)}
-          </p>
-          <div className="row" style={{ marginTop: 'var(--space-sm)' }}>
+          {/* タイトルは上の見出しに出ているので、ここでは日付と山だけを示す */}
+          <p className="t-caption muted">{formatDateRange(activity.start_date, activity.end_date)}</p>
+          <div className="row" style={{ marginTop: 'var(--space-xs)' }}>
             {mountains.length === 0 && <span className="t-caption muted">山が未設定です</span>}
             {mountains.map((m) => (
               <Link key={m.id} className="link t-caption" to={`/mountains/${m.id}`}>
@@ -176,7 +174,7 @@ export function ActivityDetail() {
           </div>
           {activity.members && <p className="t-caption muted">メンバー: {activity.members}</p>}
 
-          <div className="stat-grid" style={{ marginTop: 'var(--space-xl)' }}>
+          <div className="stat-grid" style={{ marginTop: 'var(--s5)' }}>
             <Stat label="写真" value={`${photos.length}枚`} />
             <Stat label="行動時間" value={formatDuration(stats.duration_sec)} />
             <Stat label="移動距離" value={formatDistance(stats.distance_m)} />
@@ -184,7 +182,7 @@ export function ActivityDetail() {
             <Stat label="最高到達点" value={formatElevation(stats.max_elevation_m)} />
           </div>
 
-          <div className="tabs" style={{ marginTop: 'var(--space-xl)' }}>
+          <div className="tabs" style={{ marginTop: 'var(--s5)' }}>
             {(['写真', '地図', 'データ', 'メモ'] as Tab[]).map((t) => (
               <button
                 key={t}
@@ -199,21 +197,22 @@ export function ActivityDetail() {
         </div>
       </section>
 
-      {/* 写真はダークキャンバスに置いて発光させる */}
       {tab === '写真' && (
-        <section className="canvas-black" style={{ padding: '2px 0' }}>
-          {photos.length === 0 ? (
-            <p className="empty muted-on-dark">写真がありません。</p>
-          ) : (
-            <PhotoGrid
-              photos={photos}
-              contributors={contributors}
-              selectable={selecting}
-              selected={selected}
-              onToggle={toggle}
-              onOpen={(index) => setLightboxIndex(index)}
-            />
-          )}
+        <section className="section-tight canvas-light">
+          <div className="wrap">
+            {photos.length === 0 ? (
+              <p className="empty">写真がありません。</p>
+            ) : (
+              <PhotoGrid
+                photos={photos}
+                contributors={contributors}
+                selectable={selecting}
+                selected={selected}
+                onToggle={toggle}
+                onOpen={(index) => setLightboxIndex(index)}
+              />
+            )}
+          </div>
         </section>
       )}
 
