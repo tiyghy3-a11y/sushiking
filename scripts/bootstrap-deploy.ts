@@ -158,7 +158,9 @@ async function main() {
 
   // 4. マイグレーション
   heading('スキーマを適用');
-  wrangler(['d1', 'migrations', 'apply', DB_NAME, '--remote', '-y']);
+  // -y は wrangler 3 の d1 migrations apply には無い。
+  // 非対話環境（CI）では確認プロンプトが自動で yes になるので、フラグは不要。
+  wrangler(['d1', 'migrations', 'apply', DB_NAME, '--remote']);
 
   // 5. 百名山マスタ
   heading('百名山マスタを投入');
