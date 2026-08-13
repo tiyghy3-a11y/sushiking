@@ -28,6 +28,47 @@ app.get('/api/health', (c) => c.json({ ok: true }));
  * Worker 側でも署名・aud・有効期限・メール許可リストを必ず検証する。
  * 設定が欠けている場合は開けっ放しにせず 503 で閉じる。
  */
+/**
+ * 認証に失敗したときの画面。
+ * ブラウザから直接開かれることが前提なので、JSON ではなく読める HTML を返す。
+ * DESIGN.md のタイポグラフィ（17px本文・28pxタイトル・-0.374pxトラッキング）に合わせている。
+ */
+const errorPage = (title: string, lines: string[]) =>
+  `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YamaLog</title>
+<div style="font:400 17px/1.47 system-ui,-apple-system,sans-serif;color:#1d1d1f;max-width:34em;margin:12vh auto;padding:0 24px">
+  <h1 style="font-size:28px;font-weight:600;letter-spacing:-.374px;margin:0 0 12px">${title}</h1>
+  ${lines.map((l) => `<p style="color:#7a7a7a;font-size:14px;margin:0 0 8px">${l}</p>`).join('\n  ')}
+</div>`;
+
+const wantsHtml = (req: Request) => (req.headers.get('Accept') ?? '').includes('text/html');
+
+/** 失敗理由ごとに、次に何を直せばよいかを添える（設定作業を1往復で終わらせるため） */
+function hintsFor(reason: string): string[] {
+  if (reason.includes('aud')) {
+    return [
+      'ACCESS_AUD の値が Access アプリの Application Audience (AUD) Tag と一致していません。コピーし直して登録し、Deploy を押してください。',
+    ];
+  }
+  if (reason.includes('許可されていないユーザー')) {
+    return ['ALLOWED_EMAILS にこのメールアドレスを追加して、Deploy を押してください。'];
+  }
+  if (reason.includes('Access certs') || reason.includes('署名鍵')) {
+    return [
+      'ACCESS_TEAM_DOMAIN が違う可能性があります。<code>◯◯◯.cloudflareaccess.com</code> の形（https:// やスラッシュを付けない）で登録してください。',
+    ];
+  }
+  if (reason.includes('トークンがありません')) {
+    return [
+      'この URL に Cloudflare Access がかかっていないか、Preview URL など別の入口から開いています。Worker の Domains で Production を Private にしてください。',
+    ];
+  }
+  if (reason.includes('有効期限')) {
+    return ['ページを再読み込みすると、サインイン画面に戻ります。'];
+  }
+  return ['許可されたアカウントで、Cloudflare Access を設定した URL からアクセスしてください。'];
+}
+
 app.use('*', async (c, next) => {
   if (c.env.ACCESS_DISABLED === '1') {
     // ローカル開発のみ（.dev.vars で指定。本番には存在しない）
@@ -40,10 +81,27 @@ app.use('*', async (c, next) => {
   const allowedEmails = parseAllowedEmails(c.env.ALLOWED_EMAILS);
 
   if (!teamDomain || !aud || allowedEmails.length === 0) {
+    // どれが欠けているかだけ示す（値は出さない）。設定漏れの切り分けがこれで済む
+    const missing = [
+      !teamDomain && 'ACCESS_TEAM_DOMAIN',
+      !aud && 'ACCESS_AUD',
+      allowedEmails.length === 0 && 'ALLOWED_EMAILS',
+    ].filter(Boolean) as string[];
+    const detail = `未設定: ${missing.join(' / ')}`;
+
+    if (wantsHtml(c.req.raw)) {
+      return c.html(
+        errorPage('認証が未設定です', [
+          detail,
+          'Cloudflare の Worker 設定 → Variables and Secrets に Secret として登録し、<strong>Deploy を押す</strong>と反映されます（DEPLOY.md 手順5）。',
+          '設定が済むまで、この Worker は誰に対しても中身を返しません。',
+        ]),
+        503,
+      );
+    }
     return c.json(
       {
-        error:
-          '認証が未設定です。ACCESS_TEAM_DOMAIN / ACCESS_AUD / ALLOWED_EMAILS を設定してください（DEPLOY.md 参照）',
+        error: `認証が未設定です（${detail}）。ACCESS_TEAM_DOMAIN / ACCESS_AUD / ALLOWED_EMAILS を設定してください（DEPLOY.md 参照）`,
       },
       503,
     );
@@ -57,16 +115,9 @@ app.use('*', async (c, next) => {
 
   if (!result.ok) {
     // ブラウザからの直アクセスには読める形で返す
-    const wantsHtml = (c.req.header('Accept') ?? '').includes('text/html');
-    if (wantsHtml) {
+    if (wantsHtml(c.req.raw)) {
       return c.html(
-        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>YamaLog</title>
-<div style="font:400 17px/1.47 system-ui,-apple-system,sans-serif;color:#1d1d1f;max-width:34em;margin:18vh auto;padding:0 24px">
-  <h1 style="font-size:28px;font-weight:600;letter-spacing:-.374px;margin:0 0 8px">サインインが必要です</h1>
-  <p style="color:#7a7a7a;font-size:14px">${result.reason}</p>
-  <p style="color:#7a7a7a;font-size:14px">許可されたアカウントで、Cloudflare Access を設定した URL からアクセスしてください。</p>
-</div>`,
+        errorPage('サインインが必要です', [result.reason, ...hintsFor(result.reason)]),
         result.status,
       );
     }
