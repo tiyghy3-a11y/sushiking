@@ -150,12 +150,23 @@ async function resizeWithinBudget(
 }
 
 /**
+ * 中身のハッシュだけを求める。
+ *
+ * 取り込み済みかどうかは、重い処理（HEIC変換・デコード・リサイズ）の前に
+ * これで判定する。取り込みが途中で止まっても、同じ写真をもう一度選べば
+ * 済んだ分は解析せずに飛ばせる。
+ */
+export async function hashFile(file: File): Promise<string> {
+  return sha256Hex(await file.arrayBuffer());
+}
+
+/**
  * 1ファイルを取り込み可能な形に整える。
  * EXIFが無くても失敗にはしない（欠損は異常系ではなく通常系）。
  */
-export async function preparePhoto(file: File): Promise<PreparedPhoto> {
+export async function preparePhoto(file: File, knownHash?: string): Promise<PreparedPhoto> {
   const buffer = await file.arrayBuffer();
-  const hash = await sha256Hex(buffer);
+  const hash = knownHash ?? (await sha256Hex(buffer));
 
   let exif: Record<string, unknown> = {};
   try {

@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { formatOffset } from '../lib/format';
-import {
-  GSI_LAYERS,
-  MapView,
-  getDefaultLayer,
-  setDefaultLayer,
-  type GsiLayerKey,
-  type MapMarker,
-} from '../components/MapView';
+import { MapView, type MapMarker } from '../components/MapView';
 import type { Contributor, Mountain } from '../lib/types';
 
 export function Settings() {
@@ -19,7 +12,6 @@ export function Settings() {
       </div>
       <ContributorSettings />
       <StorageSettings />
-      <MapSettings />
       <MountainSettings />
     </>
   );
@@ -157,34 +149,6 @@ function StorageSettings() {
             ? '原本・表示用・サムネイルを R2 に保存しています。'
             : '表示用（長辺1600px）とサムネイルをデータベースに保存しています。原本は端末の写真ライブラリに残ります。'}
         </p>
-      </div>
-    </section>
-  );
-}
-
-function MapSettings() {
-  const [layer, setLayer] = useState<GsiLayerKey>(getDefaultLayer());
-
-  return (
-    <section className="section-tight canvas-parchment">
-      <div className="wrap-narrow">
-        <h2 className="t-section">地図タイルの既定</h2>
-        <div className="map-layer-switch" style={{ marginTop: 'var(--space-sm)' }}>
-          {(Object.keys(GSI_LAYERS) as GsiLayerKey[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              className={key === layer ? 'active' : ''}
-              onClick={() => {
-                setLayer(key);
-                setDefaultLayer(key);
-              }}
-            >
-              {GSI_LAYERS[key].label}
-            </button>
-          ))}
-        </div>
-        <p className="t-fine muted">出典: 国土地理院</p>
       </div>
     </section>
   );

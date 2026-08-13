@@ -3,7 +3,13 @@ import { Link } from 'react-router-dom';
 import exifr from 'exifr';
 import { api } from '../lib/api';
 import { formatOffset } from '../lib/format';
-import { buildUploadForm, preparePhoto, runPool, type PreparedPhoto } from '../lib/photo-pipeline';
+import {
+  buildUploadForm,
+  hashFile,
+  preparePhoto,
+  runPool,
+  type PreparedPhoto,
+} from '../lib/photo-pipeline';
 import type { AppConfig, Contributor } from '../lib/types';
 
 type Phase = 'idle' | 'running' | 'done';
@@ -76,7 +82,7 @@ export function Import() {
   const [offsetSec, setOffsetSec] = useState(0);
   const [phase, setPhase] = useState<Phase>('idle');
   const [files, setFiles] = useState<File[]>([]);
-  const [step, setStep] = useState<'解析中' | 'アップロード中'>('解析中');
+  const [step, setStep] = useState<'確認中' | '解析中' | 'アップロード中'>('確認中');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [previews, setPreviews] = useState<string[]>([]);
   const [tally, setTally] = useState<Tally | null>(null);
@@ -162,17 +168,51 @@ export function Import() {
         time_offset_sec: offsetSec,
       });
 
+      /*
+       * 重い処理（HEIC変換・デコード・リサイズ）の前に、ハッシュだけ先に取って
+       * 取り込み済みを外す。iOS ではアプリを切り替えると実行が止まるので、
+       * 中断後に同じ写真をもう一度選んだとき、済んだ分をここで安く飛ばせる。
+       */
+      setStep('確認中');
       setProgress({ done: 0, total: targets.length });
+      const hashes = new Map<File, string>();
+      await runPool(targets, 4, async (file) => {
+        try {
+          hashes.set(file, await hashFile(file));
+        } catch {
+          // 読めなければ後段の解析で改めて失敗させる
+        }
+        setProgress((p) => ({ ...p, done: p.done + 1 }));
+      });
 
-      for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
-        const chunk = targets.slice(i, i + CHUNK_SIZE);
+      let pending = targets;
+      try {
+        const { existing } = await api.checkHashes([...hashes.values()]);
+        const existingSet = new Set(existing);
+        pending = targets.filter((f) => {
+          const h = hashes.get(f);
+          if (h && existingSet.has(h)) {
+            totals.duplicated++;
+            return false;
+          }
+          return true;
+        });
+        setTally({ ...totals });
+      } catch {
+        // 判定できなくても送信は続ける（Worker 側でも hash で弾かれる）
+      }
+
+      setProgress({ done: 0, total: pending.length });
+
+      for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
+        const chunk = pending.slice(i, i + CHUNK_SIZE);
 
         // 1. 解析（EXIF抽出・HEIC変換・リサイズ。すべてブラウザ側）
         setStep('解析中');
         const prepared: PreparedPhoto[] = [];
         await runPool(chunk, PREPARE_CONCURRENCY, async (file) => {
           try {
-            prepared.push(await preparePhoto(file));
+            prepared.push(await preparePhoto(file, hashes.get(file)));
           } catch (e) {
             totals.readFailed++;
             failed.push({
@@ -189,18 +229,8 @@ export function Import() {
           if (p.meta.coord_source !== 'exif') totals.noCoord++;
         }
 
-        // 2. 取り込み済みは投げる前に除外する
-        let toUpload = prepared;
-        try {
-          const { existing } = await api.checkHashes(prepared.map((p) => p.hash));
-          const existingSet = new Set(existing);
-          totals.duplicated += existingSet.size;
-          toUpload = prepared.filter((p) => !existingSet.has(p.hash));
-        } catch {
-          // 重複チェックに失敗しても送信は続ける（Worker 側でも hash で弾かれる）
-        }
-
-        // 3. 送信
+        // 2. 送信（取り込み済みの除外は開始時に済ませてある）
+        const toUpload = prepared;
         setStep('アップロード中');
         const succeeded = new Set<PreparedPhoto>();
         await runPool(toUpload, UPLOAD_CONCURRENCY, async (item) => {
@@ -232,7 +262,7 @@ export function Import() {
           }
         });
 
-        // 4. このかたまりで確保したメモリを手放す。
+        // 3. このかたまりで確保したメモリを手放す。
         //    取り込めた写真だけをプレビューに残す（失敗した写真は下の別枠で出す）
         const keepUrls: string[] = [];
         for (const p of prepared) {
@@ -247,7 +277,7 @@ export function Import() {
 
         setTally({ ...totals });
         setFailures([...failed]);
-        setProgress({ done: Math.min(i + chunk.length, targets.length), total: targets.length });
+        setProgress({ done: Math.min(i + chunk.length, pending.length), total: pending.length });
       }
 
       setPhase('done');
@@ -391,7 +421,8 @@ export function Import() {
                 <span style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
               <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
-                この画面を開いたままにしてください。他のアプリに切り替えると止まることがあります。
+                この画面を開いたままにしてください。iPhone では他のアプリに切り替えると処理が止まります。
+                止まっても取り込み済みの分は残るので、同じ写真をもう一度選べば残りだけを取り込みます。
               </p>
             </div>
           )}

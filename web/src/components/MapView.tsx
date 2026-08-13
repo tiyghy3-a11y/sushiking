@@ -57,14 +57,13 @@ export interface MapMarker {
   onDragEnd?: (lngLat: { lng: number; lat: number }) => void;
 }
 
-const LAYER_PREF_KEY = 'yamalog.default_map_layer';
-
-export const getDefaultLayer = (): GsiLayerKey => {
-  const stored = localStorage.getItem(LAYER_PREF_KEY);
-  return stored && stored in GSI_LAYERS ? (stored as GsiLayerKey) : 'pale';
-};
-
-export const setDefaultLayer = (key: GsiLayerKey) => localStorage.setItem(LAYER_PREF_KEY, key);
+/*
+ * 既定のタイル種別。
+ * 以前は設定画面で保存できるようにしていたが、地図を出す画面（山行詳細・山ページ・
+ * 座標補正）はいずれも用途に合う種別を指定して呼ぶため、保存値は使われていなかった。
+ * 種別はそれぞれの地図の上にある切替で変えられる。
+ */
+const FALLBACK_LAYER: GsiLayerKey = 'std';
 
 interface Props {
   markers: MapMarker[];
@@ -92,7 +91,7 @@ export function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRefs = useRef<maplibregl.Marker[]>([]);
   const clickRef = useRef(onMapClick);
-  const [layer, setLayer] = useState<GsiLayerKey>(defaultLayer ?? getDefaultLayer());
+  const [layer, setLayer] = useState<GsiLayerKey>(defaultLayer ?? FALLBACK_LAYER);
 
   clickRef.current = onMapClick;
 
@@ -100,7 +99,7 @@ export function MapView({
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: styleFor(defaultLayer ?? getDefaultLayer()),
+      style: styleFor(defaultLayer ?? FALLBACK_LAYER),
       center,
       zoom,
       attributionControl: { compact: false },
