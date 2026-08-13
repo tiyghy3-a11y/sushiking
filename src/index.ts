@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from './db/types';
 import { extractAccessToken, parseAllowedEmails, verifyAccessToken } from './lib/access';
+import { getStorage } from './db/storage';
 import { activities } from './routes/activities';
 import { batches } from './routes/batches';
 import { contributors } from './routes/contributors';
@@ -86,6 +87,16 @@ app.route('/img', images);
 
 /** ログイン中のユーザー（UIの表示確認用） */
 app.get('/api/me', (c) => c.json({ email: c.get('userEmail') }));
+
+/**
+ * クライアントに渡す構成情報。
+ * 原本を保存しない構成では、送っても捨てられるので最初からアップロードしない
+ * （スマホからの通信量が3分の1程度になる）。
+ */
+app.get('/api/config', (c) => {
+  const storage = getStorage(c.env);
+  return c.json({ photo_storage: storage.mode, keeps_original: storage.keepsOriginal });
+});
 
 app.notFound((c) =>
   c.req.path.startsWith('/api/') ? c.json({ error: 'not found' }, 404) : c.env.ASSETS.fetch(c.req.raw),

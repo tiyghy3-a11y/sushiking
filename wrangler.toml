@@ -35,9 +35,15 @@ database_name = "yamalog"
 database_id = "37b7f592-376e-4abf-bf83-6d90542b9db5"
 migrations_dir = "migrations"
 
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "yamalog-photos"
+# 画像の保存先。'd1' なら表示用とサムネイルを D1 に入れ、原本は保存しない。
+# R2 はアカウント側の有効化（支払い方法の登録）が必要なため、既定はこちら。
+[vars]
+PHOTO_STORAGE = "d1"
+
+# R2 を有効化して原本も保存する場合は PHOTO_STORAGE を "r2" にして、以下を有効にする。
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "yamalog-photos"
 
 # 認証の設定値は wrangler secret put で入れる（メールアドレスをリポジトリに置かない）:
 #   ACCESS_TEAM_DOMAIN   例: your-team.cloudflareaccess.com

@@ -162,7 +162,13 @@ async function resolveContributor(args: Args): Promise<string | null> {
   return contributor.id;
 }
 
-async function uploadOne(args: Args, item: Extracted, contributorId: string | null, batchId: string) {
+async function uploadOne(
+  args: Args,
+  item: Extracted,
+  contributorId: string | null,
+  batchId: string,
+  keepsOriginal: boolean,
+) {
   const [display, thumb] = await Promise.all([resize(item.bytes, DISPLAY_EDGE), resize(item.bytes, THUMB_EDGE)]);
 
   const form = new FormData();
@@ -188,7 +194,12 @@ async function uploadOne(args: Args, item: Extracted, contributorId: string | nu
     }),
   );
   const name = basename(item.path);
-  form.set('original', new Blob([item.bytes], { type: item.mime }), name);
+  // 原本を保存しない構成では送っても捨てられるので、サムネで代用して転送量を抑える
+  form.set(
+    'original',
+    keepsOriginal ? new Blob([item.bytes], { type: item.mime }) : new Blob([thumb], { type: 'image/jpeg' }),
+    name,
+  );
   form.set('display', new Blob([display], { type: 'image/jpeg' }), `${name}.display.jpg`);
   form.set('thumb', new Blob([thumb], { type: 'image/jpeg' }), `${name}.thumb.jpg`);
 
@@ -259,6 +270,13 @@ async function main() {
   console.log(`取り込み対象 ${targets.length} 件 / 取り込み済みスキップ ${existingSet.size} 件`);
   if (targets.length === 0) return;
 
+  const { keeps_original: keepsOriginal } = await api<{ keeps_original: boolean }>(
+    args.endpoint,
+    '/api/config',
+    { method: 'GET' },
+  ).catch(() => ({ keeps_original: true }));
+  if (!keepsOriginal) console.log('原本を保存しない構成なので、表示用とサムネイルだけ送ります');
+
   const contributorId = await resolveContributor(args);
   const { batch } = await api<{ batch: { id: string } }>(args.endpoint, '/api/import-batches', {
     method: 'POST',
@@ -270,7 +288,7 @@ async function main() {
   let skipped = 0;
   await pool(targets, args.concurrency, async (item) => {
     try {
-      const res = await uploadOne(args, item, contributorId, batch.id);
+      const res = await uploadOne(args, item, contributorId, batch.id, keepsOriginal);
       if (res.skipped) skipped++;
       done++;
       if (done % 10 === 0 || done === targets.length) {

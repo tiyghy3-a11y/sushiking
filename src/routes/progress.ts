@@ -40,6 +40,11 @@ progress.get('/', async (c) => {
     `SELECT COUNT(*) AS n FROM photos WHERE activity_id IS NULL`,
   ).first<{ n: number }>();
 
+  // D1 に画像を置く構成では無料枠の残りが気になるので、合計サイズも返す
+  const storedBytes = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(byte_size), 0) AS n FROM photo_blobs`,
+  ).first<{ n: number }>();
+
   return c.json({
     total: totals?.total ?? 0,
     climbed: totals?.climbed ?? 0,
@@ -51,5 +56,6 @@ progress.get('/', async (c) => {
     activity_count: activityCount?.n ?? 0,
     photo_count: photoCount?.n ?? 0,
     unassigned_photo_count: unassignedCount?.n ?? 0,
+    stored_image_bytes: storedBytes?.n ?? 0,
   });
 });

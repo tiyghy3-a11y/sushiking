@@ -129,9 +129,13 @@ async function main() {
     }
   }
 
-  // 3. R2
-  heading(`R2 バケット ${BUCKET_NAME}`);
-  if (!dryRun) {
+  // 3. R2（PHOTO_STORAGE=r2 のときだけ）
+  const usesR2 = /^\s*PHOTO_STORAGE\s*=\s*"r2"/m.test(await readFile(TOML_PATH, 'utf8'));
+  heading(usesR2 ? `R2 バケット ${BUCKET_NAME}` : 'R2 は使わない構成なのでスキップ');
+  if (!usesR2) {
+    console.log('  wrangler.toml が PHOTO_STORAGE="d1" なので、画像は D1 に保存します');
+    console.log('  （原本は保存せず、表示用とサムネイルだけを入れます）');
+  } else if (!dryRun) {
     const buckets = wrangler(['r2', 'bucket', 'list'], { capture: true, allowFail: true });
     if (buckets.code !== 0) {
       // 原因の切り分けに必要なので、wrangler の出力をそのまま見せる
@@ -148,7 +152,7 @@ async function main() {
     }
     if (hasBucket(buckets.stdout, BUCKET_NAME)) console.log('  既にあります');
     else wrangler(['r2', 'bucket', 'create', BUCKET_NAME], { capture: true });
-  } else {
+  } else if (dryRun) {
     wrangler(['r2', 'bucket', 'create', BUCKET_NAME]);
   }
 

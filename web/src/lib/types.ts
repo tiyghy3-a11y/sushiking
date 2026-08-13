@@ -53,6 +53,9 @@ export interface Photo {
   id: string;
   activity_id: string | null;
   contributor_id: string | null;
+  storage?: 'd1' | 'r2';
+  /** 原本を保存しているか（0 なら端末側にしかない） */
+  has_original?: number;
   taken_at: string | null;
   taken_at_raw: string | null;
   time_source: TimeSource;
@@ -121,6 +124,12 @@ export interface UnassignedGroup {
   photos: Photo[];
 }
 
+export interface AppConfig {
+  photo_storage: 'd1' | 'r2';
+  /** 原本を保存する構成かどうか。false なら原本はアップロードしない */
+  keeps_original: boolean;
+}
+
 export interface ProgressSummary {
   total: number;
   climbed: number;
@@ -128,4 +137,5 @@ export interface ProgressSummary {
   activity_count: number;
   photo_count: number;
   unassigned_photo_count: number;
+  stored_image_bytes: number;
 }

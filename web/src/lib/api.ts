@@ -1,6 +1,7 @@
 import { classifyNetworkFailure, classifyResponse } from './auth-recovery';
 import type {
   Activity,
+  AppConfig,
   ActivityListItem,
   ActivityStats,
   Contributor,
@@ -84,6 +85,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
+  config: () => request<AppConfig>('/api/config'),
   progress: () => request<ProgressSummary>('/api/progress'),
 
   mountains: () => request<{ mountains: Mountain[] }>('/api/mountains'),

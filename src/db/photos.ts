@@ -2,7 +2,8 @@
  * 写真に対する横断的な処理。ルート間で共有する。
  */
 import { interpolateCoords, type PhotoCoordInput } from '../lib/interpolate';
-import type { PhotoRow } from './types';
+import { getStorage } from './storage';
+import type { Env } from './types';
 
 /**
  * activity に属する写真の座標を補間し直す。
@@ -56,11 +57,12 @@ export async function detachPhotos(db: D1Database, photoIds: string[]): Promise<
     .run();
 }
 
-/** R2 の3キーをまとめて削除する */
-export async function deletePhotoObjects(bucket: R2Bucket, photo: PhotoRow): Promise<void> {
-  await bucket.delete([photo.r2_key_original, photo.r2_key_display, photo.r2_key_thumb]);
+/** 保存済みの画像バイト列を消す（保存先は storage.ts が判断する） */
+export async function deletePhotoObjects(env: Env, photoId: string): Promise<void> {
+  await getStorage(env).remove(photoId);
 }
 
-export const PHOTO_COLUMNS = `id, activity_id, contributor_id, r2_key_original, r2_key_display,
-  r2_key_thumb, taken_at, taken_at_raw, time_source, lat, lng, altitude, coord_source,
+export const PHOTO_COLUMNS = `id, activity_id, contributor_id, storage, has_original,
+  r2_key_original, r2_key_display, r2_key_thumb,
+  taken_at, taken_at_raw, time_source, lat, lng, altitude, coord_source,
   width, height, mime, byte_size, content_hash, camera_model, caption, is_favorite, created_at`;

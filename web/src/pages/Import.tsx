@@ -4,7 +4,7 @@ import exifr from 'exifr';
 import { api } from '../lib/api';
 import { formatOffset } from '../lib/format';
 import { buildUploadForm, preparePhoto, runPool, type PreparedPhoto } from '../lib/photo-pipeline';
-import type { Contributor } from '../lib/types';
+import type { AppConfig, Contributor } from '../lib/types';
 
 type Phase = 'idle' | 'preparing' | 'ready' | 'uploading' | 'done';
 
@@ -21,6 +21,7 @@ const UPLOAD_CONCURRENCY = 4;
 const MAX_FILES_PER_BATCH = 60;
 
 export function Import() {
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [contributors, setContributors] = useState<Contributor[]>([]);
   const [contributorId, setContributorId] = useState<string>('');
   const [newContributor, setNewContributor] = useState('');
@@ -34,6 +35,10 @@ export function Import() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    api
+      .config()
+      .then(setConfig)
+      .catch(() => setConfig(null));
     api
       .contributors()
       .then((r) => {
@@ -124,6 +129,7 @@ export function Import() {
               contributor_id: contributor || null,
               batch_id: batch.batch.id,
               time_offset_sec: offsetSec,
+              keepsOriginal: config?.keeps_original ?? true,
             }),
           );
           if (res.skipped) duplicated++;
@@ -163,6 +169,12 @@ export function Import() {
 
       <section className="section-tight canvas-light">
         <div className="wrap-narrow">
+          {config && !config.keeps_original && (
+            <p className="notice">
+              この環境では<strong>原本を保存しません</strong>。表示用（長辺1600px）とサムネイルだけを保存し、
+              原本は端末の写真ライブラリに残ります。アップロードもその2枚だけなので通信量は3分の1程度です。
+            </p>
+          )}
           <p className="notice">
             画像処理はすべてブラウザ側で行います（EXIF抽出・HEIC変換・長辺1600px/400pxの生成）。
             数千枚の初回投入は <code>scripts/bulk-import.ts</code> を使ってください。

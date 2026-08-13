@@ -18,6 +18,7 @@ export function Settings() {
         <span className="t-tagline">設定</span>
       </div>
       <ContributorSettings />
+      <StorageSettings />
       <MapSettings />
       <MountainSettings />
     </>
@@ -110,6 +111,52 @@ function ContributorSettings() {
             追加
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+/** D1 に画像を置く構成では無料枠の残りが気になるので、合計サイズを出す */
+function StorageSettings() {
+  const [info, setInfo] = useState<{ bytes: number; photos: number; mode: string; keepsOriginal: boolean } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    Promise.all([api.progress(), api.config()])
+      .then(([p, c]) =>
+        setInfo({
+          bytes: p.stored_image_bytes,
+          photos: p.photo_count,
+          mode: c.photo_storage,
+          keepsOriginal: c.keeps_original,
+        }),
+      )
+      .catch(() => setInfo(null));
+  }, []);
+
+  if (!info) return null;
+  const mb = info.bytes / 1024 / 1024;
+
+  return (
+    <section className="section-tight canvas-light">
+      <div className="wrap-narrow">
+        <h2 className="t-section">保存状況</h2>
+        <div className="stat-grid" style={{ marginTop: 'var(--space-lg)' }}>
+          <div>
+            <p className="t-caption muted">写真</p>
+            <p className="stat-value">{info.photos.toLocaleString('ja-JP')}枚</p>
+          </div>
+          <div>
+            <p className="t-caption muted">画像の合計サイズ</p>
+            <p className="stat-value">{mb < 1024 ? `${mb.toFixed(1)} MB` : `${(mb / 1024).toFixed(2)} GB`}</p>
+          </div>
+        </div>
+        <p className="t-caption muted" style={{ marginTop: 'var(--space-md)' }}>
+          {info.keepsOriginal
+            ? '原本・表示用・サムネイルを R2 に保存しています。'
+            : '表示用（長辺1600px）とサムネイルをデータベースに保存しています。原本は端末の写真ライブラリに残ります。'}
+        </p>
       </div>
     </section>
   );

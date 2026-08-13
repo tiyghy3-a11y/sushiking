@@ -88,9 +88,16 @@ export function Lightbox({ photos, index, onClose, onIndexChange, onToggleFavori
               {photo.is_favorite ? '★' : '☆'}
             </button>
           )}
-          <a className="link link-on-dark t-caption" href={originalUrl(photo.id)} target="_blank" rel="noreferrer">
-            原本
-          </a>
+          {photo.has_original !== 0 && (
+            <a
+              className="link link-on-dark t-caption"
+              href={originalUrl(photo.id)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              原本
+            </a>
+          )}
         </div>
       </div>
     </div>

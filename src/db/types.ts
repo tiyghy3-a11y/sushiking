@@ -3,8 +3,12 @@ import type { TimeSource } from '../lib/time';
 
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket;
+  /** PHOTO_STORAGE="r2" のときだけ必要（R2 を有効化していない場合はバインディングしない） */
+  BUCKET?: R2Bucket;
   ASSETS: Fetcher;
+
+  /** 画像の保存先。'd1'（既定・原本は保存しない）か 'r2' */
+  PHOTO_STORAGE?: 'd1' | 'r2';
 
   /** Cloudflare Access のチームドメイン（例: your-team.cloudflareaccess.com） */
   ACCESS_TEAM_DOMAIN?: string;
@@ -47,9 +51,11 @@ export interface PhotoRow {
   id: string;
   activity_id: string | null;
   contributor_id: string | null;
-  r2_key_original: string;
-  r2_key_display: string;
-  r2_key_thumb: string;
+  storage: 'd1' | 'r2';
+  has_original: number;
+  r2_key_original: string | null;
+  r2_key_display: string | null;
+  r2_key_thumb: string | null;
   taken_at: string | null;
   taken_at_raw: string | null;
   time_source: TimeSource;

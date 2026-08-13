@@ -1,43 +1,35 @@
 import { Hono } from 'hono';
-import type { Env, PhotoRow } from '../db/types';
+import { getStorage, type Variant } from '../db/storage';
+import type { Env } from '../db/types';
 
 export const images = new Hono<{ Bindings: Env }>();
 
-const VARIANTS = {
-  thumb: 'r2_key_thumb',
-  display: 'r2_key_display',
-  original: 'r2_key_original',
-} as const;
-
-type Variant = keyof typeof VARIANTS;
+const VARIANTS: Variant[] = ['thumb', 'display', 'original'];
 
 /**
- * R2 の中身を Worker 経由で配信する。
- * photo_id は不変・内容も差し替えないので immutable キャッシュにできる。
+ * 画像を配信する。保存先（D1 / R2）は storage.ts が判断する。
+ * photo_id は不変・中身も差し替えないので、ブラウザ側は永続キャッシュしてよい。
+ * 個人の写真なので共有キャッシュには載せない（private）。
  */
 images.get('/:variant/:id', async (c) => {
   const variant = c.req.param('variant') as Variant;
-  const column = VARIANTS[variant];
-  if (!column) return c.json({ error: 'unknown variant' }, 404);
+  if (!VARIANTS.includes(variant)) return c.json({ error: 'unknown variant' }, 404);
 
-  const photo = await c.env.DB.prepare(
-    `SELECT ${column} AS key, mime FROM photos WHERE id = ?`,
-  )
-    .bind(c.req.param('id'))
-    .first<{ key: string; mime: PhotoRow['mime'] }>();
-  if (!photo) return c.json({ error: 'not found' }, 404);
-
-  const object = await c.env.BUCKET.get(photo.key);
-  if (!object) return c.json({ error: 'object missing' }, 404);
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set('etag', object.httpEtag);
-  // 個人の写真なので共有キャッシュには載せない（SPEC の public から private に変更）。
-  // photo_id は不変で中身も差し替えないため、ブラウザ側は永続キャッシュしてよい。
-  headers.set('Cache-Control', 'private, max-age=31536000, immutable');
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', variant === 'original' ? photo.mime : 'image/jpeg');
+  const storage = getStorage(c.env);
+  if (variant === 'original' && !storage.keepsOriginal) {
+    return c.json(
+      { error: '原本は保存していません（表示用とサムネイルのみ）。原本は端末の写真ライブラリにあります' },
+      404,
+    );
   }
-  return new Response(object.body, { headers });
+
+  const image = await storage.get(c.req.param('id'), variant);
+  if (!image) return c.json({ error: 'not found' }, 404);
+
+  const headers = new Headers({
+    'Content-Type': image.mime || 'image/jpeg',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+  });
+  if (image.byteSize != null) headers.set('Content-Length', String(image.byteSize));
+  return new Response(image.body, { headers });
 });

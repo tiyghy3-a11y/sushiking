@@ -4,6 +4,7 @@ import { suggestMountains, type MountainLike } from '../lib/geo';
 import { applyOffset, localDateKey, type TimeSource } from '../lib/time';
 import type { CoordSource } from '../lib/interpolate';
 import { deletePhotoObjects, PHOTO_COLUMNS, reinterpolateActivity } from '../db/photos';
+import { getStorage, r2Key } from '../db/storage';
 
 export const photos = new Hono<{ Bindings: Env }>();
 
@@ -104,23 +105,33 @@ photos.post('/upload', async (c) => {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const basis = takenAt ?? now;
-  const yyyy = basis.slice(0, 4);
-  const mm = basis.slice(5, 7);
   const ext = (meta.ext ?? original.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  const keys = {
-    original: `original/${yyyy}/${mm}/${id}.${ext || 'jpg'}`,
-    display: `display/${id}.jpg`,
-    thumb: `thumb/${id}.jpg`,
-  };
+  const storage = getStorage(c.env);
 
-  await Promise.all([
-    c.env.BUCKET.put(keys.original, original.stream(), {
-      httpMetadata: { contentType: meta.mime || original.type || 'application/octet-stream' },
-    }),
-    c.env.BUCKET.put(keys.display, display.stream(), { httpMetadata: { contentType: 'image/jpeg' } }),
-    c.env.BUCKET.put(keys.thumb, thumb.stream(), { httpMetadata: { contentType: 'image/jpeg' } }),
-  ]);
+  // 保存先の判断は storage.ts に寄せる（d1 なら photo_blobs、r2 なら SPEC のキー設計）。
+  // d1 モードでは原本を保存しないので、送られてきても捨てる。
+  try {
+    await storage.put(id, 'display', await display.arrayBuffer(), 'image/jpeg');
+    await storage.put(id, 'thumb', await thumb.arrayBuffer(), 'image/jpeg');
+    if (storage.keepsOriginal) {
+      await storage.put(id, 'original', await original.arrayBuffer(), meta.mime || original.type || 'application/octet-stream', {
+        ext: ext || 'jpg',
+        basisIso: basis,
+      });
+    }
+  } catch (e) {
+    await storage.remove(id); // 途中で失敗したら書けた分を消す
+    return c.json({ error: (e as Error).message }, 400);
+  }
+
+  const keys = storage.keepsOriginal
+    ? {
+        original: r2Key(id, 'original', ext || 'jpg', basis),
+        display: r2Key(id, 'display'),
+        thumb: r2Key(id, 'thumb'),
+      }
+    : { original: null, display: null, thumb: null };
 
   const hasCoord = typeof meta.lat === 'number' && typeof meta.lng === 'number';
   const coordSource: CoordSource = hasCoord ? (meta.coord_source ?? 'exif') : 'none';
@@ -128,14 +139,17 @@ photos.post('/upload', async (c) => {
   try {
     await c.env.DB.prepare(
       `INSERT INTO photos (
-         id, activity_id, contributor_id, r2_key_original, r2_key_display, r2_key_thumb,
+         id, activity_id, contributor_id, storage, has_original,
+         r2_key_original, r2_key_display, r2_key_thumb,
          taken_at, taken_at_raw, time_source, lat, lng, altitude, coord_source,
          width, height, mime, byte_size, content_hash, camera_model, caption, is_favorite, created_at
-       ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)`,
+       ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)`,
     )
       .bind(
         id,
         meta.contributor_id ?? null,
+        storage.mode,
+        storage.keepsOriginal ? 1 : 0,
         keys.original,
         keys.display,
         keys.thumb,
@@ -156,8 +170,8 @@ photos.post('/upload', async (c) => {
       )
       .run();
   } catch (e) {
-    // D1 への INSERT が落ちたら R2 に孤児を残さない
-    await c.env.BUCKET.delete([keys.original, keys.display, keys.thumb]);
+    // 行が入らなかったら画像だけ残さない
+    await storage.remove(id);
     throw e;
   }
 
@@ -305,7 +319,7 @@ photos.delete('/:id', async (c) => {
     .first<PhotoRow>();
   if (!photo) return c.json({ error: 'not found' }, 404);
 
-  await deletePhotoObjects(c.env.BUCKET, photo);
+  await deletePhotoObjects(c.env, photo.id);
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM photo_batch_map WHERE photo_id = ?`).bind(id),
     c.env.DB.prepare(`UPDATE activities SET cover_photo_id = NULL WHERE cover_photo_id = ?`).bind(id),

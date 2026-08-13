@@ -184,11 +184,23 @@ export async function preparePhoto(file: File): Promise<PreparedPhoto> {
 
 export function buildUploadForm(
   prepared: PreparedPhoto,
-  extra: { contributor_id: string | null; batch_id: string | null; time_offset_sec: number },
+  extra: {
+    contributor_id: string | null;
+    batch_id: string | null;
+    time_offset_sec: number;
+    /** 原本を保存しない構成なら false。送らずに済ませて通信量を1/3に抑える */
+    keepsOriginal?: boolean;
+  },
 ): FormData {
+  const { keepsOriginal = true, ...meta } = extra;
   const form = new FormData();
-  form.set('meta', JSON.stringify({ ...prepared.meta, ...extra }));
-  form.set('original', prepared.originalBlob, prepared.name);
+  form.set('meta', JSON.stringify({ ...prepared.meta, ...meta }));
+  // 原本を保存しない構成でも、Worker 側の検証を通すために形だけは送る（サムネで代用）
+  form.set(
+    'original',
+    keepsOriginal ? prepared.originalBlob : prepared.thumbBlob,
+    prepared.name,
+  );
   form.set('display', prepared.displayBlob, `${prepared.name}.display.jpg`);
   form.set('thumb', prepared.thumbBlob, `${prepared.name}.thumb.jpg`);
   return form;
