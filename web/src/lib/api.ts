@@ -46,6 +46,31 @@ function reauthenticate(): never {
   throw new Error('サインインが必要です。ページを再読み込みしてください。');
 }
 
+/**
+ * 失敗レスポンスから、画面に出せる1行を作る。
+ *
+ * 本文は3通りある:
+ *   1. アプリの {"error": "..."} → その中身
+ *   2. Cloudflare のエラーページ（HTML）→ Worker まで届かず落ちている。
+ *      HTMLをそのまま出すと画面がタグで埋まるので、状況の説明に置き換える
+ *   3. それ以外 → 先頭だけ
+ */
+async function readError(res: Response): Promise<string> {
+  const text = await res.text().catch(() => '');
+  try {
+    const body = JSON.parse(text) as { error?: unknown };
+    if (typeof body.error === 'string') return `${body.error}（${res.status}）`;
+  } catch {
+    // JSON ではなかった
+  }
+  if (/^\s*<(!doctype|html)/i.test(text)) {
+    return res.status >= 500
+      ? `サーバー側で処理しきれませんでした（${res.status}）。写真の枚数を減らすか、時間をおいてもう一度お試しください。`
+      : `サーバーに拒否されました（${res.status}）。`;
+  }
+  return `${text.slice(0, 200) || 'エラーが発生しました'}（${res.status}）`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -74,16 +99,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('このアカウントでは利用できません（403）。許可リストを確認してください。');
   }
   if (action === 'error') {
-    // API は {"error": "..."} を返す。そのまま出すと画面に JSON が並ぶので中身だけ取り出す
-    const text = await res.text();
-    let message = text.slice(0, 300);
-    try {
-      const body = JSON.parse(text) as { error?: unknown };
-      if (typeof body.error === 'string') message = body.error;
-    } catch {
-      // JSON でなければ生の本文をそのまま使う
-    }
-    throw new Error(`${message}（${res.status}）`);
+    throw new Error(await readError(res));
   }
 
   session.set(false); // 通信できたのでフラグを戻す

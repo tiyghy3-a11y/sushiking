@@ -11,11 +11,15 @@ export const DISPLAY_EDGE = 1600;
 export const THUMB_EDGE = 400;
 /**
  * 表示用1枚のバイト数の上限。
- * 画像を D1 に入れる構成では1枚 900KB までしか保存できない（src/db/storage.ts）。
- * 岩肌や樹林のような細部の多い写真は 1600px / 品質0.86 でも超えることがあるので、
- * 収まるまで画質→寸法の順に落とす。
+ *
+ * 画像を D1 に入れる構成では、大きな BLOB を1リクエストで書くと Worker の
+ * 実行上限に当たって Cloudflare が 503 を返す（src/db/storage.ts のコメント参照）。
+ * サーバ側の上限 500KB より確実に小さくなるよう、ここでは 400KB を目標にする。
+ * 岩肌や樹林のような細部の多い写真は 1600px / 品質0.86 だと 800KB を超えるので、
+ * 収まるまで画質→寸法の順に落とす。長辺1600pxのままでも画質0.6程度までは
+ * スマホの画面では劣化がほぼ分からない。
  */
-const DISPLAY_BUDGET_BYTES = 800_000;
+const DISPLAY_BUDGET_BYTES = 400_000;
 
 export interface PreparedPhoto {
   file: File;
@@ -132,12 +136,12 @@ async function resizeWithinBudget(
   budget: number,
 ): Promise<Blob> {
   let blob = await resize(drawable, edge, quality);
-  for (const q of [0.72, 0.6]) {
+  for (const q of [0.72, 0.62, 0.52]) {
     if (blob.size <= budget) return blob;
     quality = q;
     blob = await resize(drawable, edge, quality);
   }
-  // 品質0.6でも超える場合だけ縮める（長辺1024pxで打ち切る）
+  // 画質を落としきっても超える場合だけ縮める（長辺1024pxで打ち切る）
   while (blob.size > budget && edge > 1024) {
     edge = Math.round(edge * 0.8);
     blob = await resize(drawable, edge, quality);

@@ -14,8 +14,17 @@ import type { Env } from './types';
 export type StorageMode = 'd1' | 'r2';
 export type Variant = 'original' | 'display' | 'thumb';
 
-/** D1 の1値あたりの上限に余裕を持たせた、画像1枚の上限 */
-export const MAX_D1_BLOB_BYTES = 900_000;
+/**
+ * 画像1枚の上限。
+ *
+ * D1 の1値あたりの上限（2MB）ではなく、**Worker が1リクエストで使える実行時間**で
+ * 決まる。無料プランでは1リクエストあたりの CPU 時間が短く、800KB 程度の BLOB を
+ * D1 に書くと途中で打ち切られ、Cloudflare が 503 のHTMLページを返す（Error 1102）。
+ * アプリのエラーとして扱えないため、ここで確実に手前で弾く。
+ *
+ * クライアント側は web/src/lib/photo-pipeline.ts でこれより小さく作ってから送る。
+ */
+export const MAX_D1_BLOB_BYTES = 500_000;
 
 export interface StoredImage {
   body: Uint8Array | ReadableStream;

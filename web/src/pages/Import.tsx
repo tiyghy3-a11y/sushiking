@@ -18,7 +18,8 @@ interface Tally {
 }
 
 const PREPARE_CONCURRENCY = 2;
-const UPLOAD_CONCURRENCY = 3;
+/* 1リクエストで画像をデータベースに書くので、同時に走らせすぎない */
+const UPLOAD_CONCURRENCY = 2;
 /**
  * 解析結果（表示用＋サムネイル）を同時にメモリへ載せる枚数。
  * 全部まとめて解析してから送ると iPhone ではタブごと落ちるので、
