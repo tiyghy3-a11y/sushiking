@@ -10,6 +10,21 @@ Cloudflare Workers に載せ、**自分が指定したメールアドレスだ�
 
 ---
 
+## 手順1〜3をまとめて実行する
+
+手作業でやるなら次節から順に進めればよいが、`npx wrangler login` を済ませたあとなら1コマンドで通る。
+
+```bash
+npx wrangler login
+npm run deploy:bootstrap              # 何をするか見るだけなら -- --dry-run
+```
+
+D1 の作成 →`wrangler.toml` への `database_id` 書き込み → R2 の作成 → マイグレーション → 百名山マスタ投入 → ビルド → デプロイ、までを順に行う。何度実行しても壊れない（既にあるものは作らない。マスタが入っていれば投入をスキップする。`/settings` で直した座標を CSV の値で上書きしないため）。
+
+終わったら **手順4（Access）と手順5（secret）** に進む。そこまで済むまで Worker は全リクエストに 503 を返すので、デプロイ済みでも中身は誰にも見えない。
+
+GitHub Actions から実行する場合は、Repository secrets に `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を登録して、**Deploy** ワークフローを `bootstrap` にチェックを入れて手動実行する（手順7参照）。
+
 ## 1. リソースを作る
 
 ```bash

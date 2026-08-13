@@ -23,7 +23,8 @@
     "seed": "tsx scripts/seed.ts --remote",
     "bulk-import": "tsx scripts/bulk-import.ts",
     "icons": "tsx scripts/make-icons.ts",
-    "build:demo": "tsx scripts/build-demo.ts"
+    "build:demo": "tsx scripts/build-demo.ts",
+    "deploy:bootstrap": "tsx scripts/bootstrap-deploy.ts"
   },
   "dependencies": {
     "hono": "^4.6.14"
