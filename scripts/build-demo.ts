@@ -48,6 +48,10 @@ ${css}
   </head>
   <body>
     <div id="root"></div>
+    <!-- 静的ホスティングは外部通信できるので、地図タイル（国土地理院）を読む -->
+    <script>
+      window.__yamalogDemoTiles__ = true;
+    </script>
     <script type="module">
 ${js}
     </script>

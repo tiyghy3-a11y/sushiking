@@ -17,9 +17,12 @@ export type GsiLayerKey = keyof typeof GSI_LAYERS;
 const GSI_ATTRIBUTION =
   '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noreferrer">国土地理院</a>';
 
+/** デモのうち、外部リクエストが遮断される配信先（Artifact など）ではタイルを読まない */
+const tilesUnavailable = (): boolean =>
+  window.__yamalogDemo__ === true && window.__yamalogDemoTiles__ !== true;
+
 const styleFor = (key: GsiLayerKey): maplibregl.StyleSpecification => {
-  // 単一HTMLのデモは外部リクエストが遮断されるため、タイルを読まず下地だけ描く
-  if (window.__yamalogDemo__) {
+  if (tilesUnavailable()) {
     return {
       version: 8,
       sources: {},
@@ -199,8 +202,8 @@ export function MapView({
       </div>
       <div ref={containerRef} className={tall ? 'map tall' : 'map'} />
       <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
-        {window.__yamalogDemo__
-          ? 'デモでは地図タイルを読み込めないため下地のみ。ピンと軌跡は実データの座標です（本番のタイル出典: 国土地理院）'
+        {tilesUnavailable()
+          ? 'この配信先では地図タイルを読み込めないため下地のみ。ピンと軌跡は実データの座標です（本番のタイル出典: 国土地理院）'
           : '地図・写真タイル: 国土地理院'}
       </p>
     </div>

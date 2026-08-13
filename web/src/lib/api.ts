@@ -189,6 +189,8 @@ declare global {
   interface Window {
     __yamalogDemoImages__?: Record<string, { thumb: string; display: string }>;
     __yamalogDemo__?: boolean;
+    /** デモのうち、外部通信できる配信先（GitHub Pages 等）で地図タイルを読む */
+    __yamalogDemoTiles__?: boolean;
   }
 }
 
