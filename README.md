@@ -62,11 +62,13 @@ npm run dev:worker      # http://127.0.0.1:8787
 npm run dev             # http://127.0.0.1:5173（/api と /img は :8787 にプロキシ）
 ```
 
-本番へのデプロイ手順（独自ドメイン・Cloudflare Access・iPhoneのホーム画面追加まで）は **[DEPLOY.md](./DEPLOY.md)** にまとめてある。
+本番へのデプロイ手順（Cloudflare Access・iPhoneのホーム画面追加まで）は **[DEPLOY.md](./DEPLOY.md)** にまとめてある。**独自ドメインは不要**で、`workers.dev` の URL に直接 Access をかけられる。
 
 ### 認証
 
 Cloudflare Access で入口を絞り、**Worker 側でも Access のトークンを検証する**（署名・aud・有効期限・メール許可リスト）。`ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ALLOWED_EMAILS` が未設定だと全リクエストに 503 を返して閉じたままになるので、設定漏れで公開されることはない。
+
+Preview URL（`<version>-yamalog.<subdomain>.workers.dev`）は Access の対象外で認証を迂回する入口になるため、`wrangler.toml` の `preview_urls = false` で塞いである。**ここは戻さないこと。**
 
 ローカル開発では Access が前段にいないため `.dev.vars` の `ACCESS_DISABLED="1"` で外す（`npm run setup:local` が作る。コミットされないので本番には存在しない）。
 
@@ -76,8 +78,19 @@ Cloudflare Access で入口を絞り、**Worker 側でも Access のトークン
 
 - 山頂ではなく数百m〜1kmずれている可能性がある
 - 北アルプス・南アルプスは `match_radius_m` が 1500m なので、このズレが山の誤判定に直結する
-- `/settings` の百名山マスタ編集で、地図上のピンをドラッグして山頂に合わせ、「保存して確認済みにする」を押す
-- 国土地理院の地名検索から取り直す場合は `npm run seed:coords -- --force`（`scripts/fetch-coords.ts`）
+
+**一括で確定させるなら標高データを使う。**
+
+```bash
+npm run verify:coords              # 検証だけ（書き込まない）
+npm run verify:coords -- --write   # 山頂に合わせて CSV を書き換え、verified=1 にする
+```
+
+国土地理院の標高タイル（DEM）を読んで各山の周囲から実際の最高地点を探し、CSV の標高値と突き合わせる（`scripts/verify-coords.ts`）。書き換えたら `npm run seed:local` / `npm run seed` で反映する。
+
+個別に直したいときは `/settings` の百名山マスタ編集で、地図上のピンをドラッグして山頂に合わせ、「保存して確認済みにする」を押す。
+
+`npm run seed:coords`（地名検索API・`scripts/fetch-coords.ts`）もあるが、**地名検索は山頂ではなく代表点を返す**。「富士山」で引くと山梨県鳴沢村の点（山頂から約10km）が候補に並ぶため、名前の一致度と既存座標からの距離で候補を絞る実装にしてある。それでも当たらない山があるので、一括確定には `verify:coords` を使うこと。
 
 `peak_alias` は深田久弥の命名と実際の最高峰名が異なる山（阿寒岳→雌阿寒岳、大雪山→旭岳、吾妻山→西吾妻山など）に入れてあり、地名検索ではこちらを優先して問い合わせる。
 

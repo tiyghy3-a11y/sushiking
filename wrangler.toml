@@ -2,13 +2,19 @@ name = "yamalog"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
-# *.workers.dev は Cloudflare Access を適用できない（Accessは自分のゾーンの
-# ホスト名に対して設定する）ため、公開せず独自ドメインだけで受ける。
-# ここを true に戻すと Access を通らない入口ができる。
-# なお Worker 側でもトークンを検証しているので、仮に開いていても素通りはしない。
-workers_dev = false
+# workers.dev の URL には Cloudflare Access を直接かけられる。
+# ダッシュボード → Workers & Pages → yamalog → Settings → Domains & Routes →
+# workers.dev の「Enable Cloudflare Access」。独自ドメインは不要。
+# エッジで認証したうえで、Worker 側でも JWT を検証する（src/lib/access.ts）。
+workers_dev = true
 
-# 独自ドメインを割り当てる（DEPLOY.md 参照）。ゾーンをCloudflareに載せてから設定する
+# Preview URL（<version>-yamalog.<subdomain>.workers.dev）は上の Access の
+# 対象外になり、認証を迂回する入口になるため必ず塞ぐ。
+# Wrangler 3.91.0 以降で有効なキー。古い版では既定で有効なままなので注意。
+preview_urls = false
+
+# 独自ドメインで受けたくなったら（DEPLOY.md 付録参照）。ゾーンをCloudflareに載せてから設定する。
+# その場合は workers_dev = false に戻して入口を1つにする。
 # [[routes]]
 # pattern = "yamalog.example.com"
 # custom_domain = true

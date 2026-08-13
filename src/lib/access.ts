@@ -1,9 +1,10 @@
 /**
  * Cloudflare Access のトークン検証。
  *
- * Access はエッジで認証を行うが、それだけに頼ると `*.workers.dev` の
- * URL を直接叩かれた場合に素通りしうる（Access はホスト名／ルートに対して
- * 適用されるため）。そこで Worker 自身でも以下を必ず検証する。
+ * Access はエッジで認証を行うが、それだけに頼ると設定を外したときや別の
+ * ホスト名（Preview URL など）から入られたときに素通りしうる。Cloudflare 自身も
+ * workers.dev で Access を使う場合は Worker 側で aud と JWKS を検証するよう
+ * 案内している。そこで Worker 自身でも以下を必ず検証する。
  *
  *   1. 署名（Access の公開鍵。チームドメインの JWKS から取得）
  *   2. aud（Access アプリケーションの Audience Tag と一致するか）

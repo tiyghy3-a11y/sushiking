@@ -10,26 +10,51 @@
 
 | 項目 | 値 |
 |---|---|
-| リポジトリ | `tiyghy3-a11y/sushiking`（https://github.com/tiyghy3-a11y/sushiking） |
+| 現リポジトリ | `tiyghy3-a11y/sushiking`（https://github.com/tiyghy3-a11y/sushiking） |
 | 作業ブランチ | **`claude/repo-init-design-review-h8popj`** |
-| 最新コミット | `930cb61` デプロイ用の認証とホーム画面対応を追加 |
-| コミット数 | 5（`87b7024` → `930cb61`） |
-| 規模 | `main` 比で 108ファイル / +14,618 −4,901 行。TS/TSX/SQL/CSS で約8,000行 |
-| PR | **未作成**（指示があれば作る） |
+| 移行先 | **新リポジトリ `yamalog`（Private 推奨）** — 手順は下 |
+| ベースコミット | `87b7024` YamaLog Phase 0 |
+| 規模 | `main` 比で 109ファイル / 約 +14,900 −4,901 行。TS/TSX/SQL/CSS で約8,000行 |
+| PR | **作らない**（`sushiking` にはマージしない） |
 
 ```bash
 git clone -b claude/repo-init-design-review-h8popj https://github.com/tiyghy3-a11y/sushiking.git yamalog
 ```
 
-### main との関係（要判断）
+### main との関係 → **別リポジトリへ分離することに決定**
 
 `main` にはこのリポジトリの**元の中身（割り勘アプリ sushiking）**が入っており、こちらの作業とは別に PR #5 がマージされて `8de1458` まで進んでいる。作業ブランチは「リポジトリ初期化」の指示に従い、割り勘アプリのファイルを撤去して YamaLog に置き換えてある。
 
-- このブランチを `main` にマージすると、**`main` から割り勘アプリが消える**
-- 割り勘アプリを残したい場合は、YamaLog を別リポジトリに移すか、`main` を YamaLog に切り替えて割り勘アプリを別リポジトリへ退避する
-- git履歴は消していないので、割り勘アプリは `8de1458` から復元できる
+このブランチを `sushiking` の `main` にマージすると割り勘アプリが消えるため、**YamaLog は新しいリポジトリへ移す**。`sushiking` は一切触らない（このブランチも残したままでよい）。
 
-**プランを練るときに最初に決めるべき点はここ。**
+#### 移す手順
+
+GitHub で空のリポジトリ `yamalog` を作る（**Private** 推奨。`wrangler.toml` のバインディング構成が読めるため）。README も .gitignore も追加しない。
+
+```bash
+git clone -b claude/repo-init-design-review-h8popj \
+  https://github.com/tiyghy3-a11y/sushiking.git yamalog
+cd yamalog
+
+git remote rename origin sushiking
+git remote add origin https://github.com/tiyghy3-a11y/yamalog.git
+git branch -m main
+git push -u origin main
+```
+
+これで `main` が YamaLog になる。GitHub の Settings → Branches で `main` を既定ブランチにしておく。
+
+履歴には割り勘アプリのコミットが祖先として残る（作業ツリーには1ファイルも無い）。気になるなら、`git push` の前に履歴を切る。
+
+```bash
+git checkout --orphan clean-main
+git commit -m "YamaLog Phase 0"
+git branch -D main && git branch -m main
+```
+
+**`sushiking` 側では何もしない。** 割り勘アプリは `main`（`8de1458`）にそのまま残る。
+
+デプロイ用の Repository secrets（`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`）は新リポジトリ側に登録する。
 
 ### 実際に触れるデモ
 
@@ -45,7 +70,7 @@ UIを1枚のHTML（2.8MB）に固めたもの。API・DB・R2の代わりにペ�
 |---|---|---|
 | 0 | リポジトリ初期化（.gitignore / DESIGN.md / Actions） | 完了 |
 | 1 | Workers + Hono + Vite/React、D1/R2バインディング | 完了 |
-| 2 | スキーマ適用と百名山マスタ投入 | 完了（**座標は暫定値・全件未確認**） |
+| 2 | スキーマ適用と百名山マスタ投入 | 完了（**座標は暫定値のまま**。確定用の `verify:coords` は用意済み・手元で実行） |
 | 3 | アップロードパイプライン（EXIF・HEIC・サムネ・重複スキップ） | 完了 |
 | 4 | 未分類トレイ | 完了 |
 | 5 | 山の自動判定（Haversine・最近傍・提案UI） | 完了 |
@@ -54,12 +79,12 @@ UIを1枚のHTML（2.8MB）に固めたもの。API・DB・R2の代わりにペ�
 | 8 | ホーム進捗マップと山ページ | 完了 |
 | 9 | CLI一括投入スクリプト | 完了 |
 | 10 | 過去写真の実データ投入と判定半径チューニング | **未着手**（手元作業） |
-| — | 認証・デプロイ準備（DEPLOY.md） | 完了（**未デプロイ**） |
+| — | 認証・デプロイ準備（DEPLOY.md） | 完了（**未デプロイ**。ドメイン不要で workers.dev + Access に確定） |
 | — | スマホ最適化・ホーム画面対応 | 完了（実機Safari未検証） |
 
 ### テストと検証
 
-- ユニットテスト **35件**（距離・補間・統計・Access検証）— `npm test`
+- ユニットテスト **54件**（距離・補間・統計・Access検証・DEMの山頂探索・地名検索の候補選択）— `npm test`
 - ローカル `wrangler dev` + D1/R2 に対する E2E 26アサーション（取り込み→判定→補間→統計→削除まで）
 - Chromium で全ルート描画確認、iPhone相当（390×844）で横スクロールなし・44pxタップ対象を確認
 - 認証の fail-closed（設定なしで HTML/JS/manifest すべて503）をローカルで確認
@@ -72,7 +97,8 @@ UIを1枚のHTML（2.8MB）に固めたもの。API・DB・R2の代わりにペ�
 migrations/0001_init.sql      D1スキーマ
 seeds/hyakumeizan.csv         百名山マスタ（座標は暫定・verified=0）
 scripts/
-  fetch-coords.ts             地理院APIで座標補完
+  verify-coords.ts            地理院DEMで山頂を特定して座標を確定
+  fetch-coords.ts             地名検索APIで空欄の座標を補完
   seed.ts                     CSV → D1
   bulk-import.ts              写真の一括投入（数千枚用）
   demo-seed.ts                デモデータ投入（--reset で削除）
@@ -142,8 +168,11 @@ GET    /img/{thumb|display|original}/:id
 | 累積標高は移動中央値(window=5)後に+10m以上のみ加算 | GPSノイズの切り捨て。**写真の間の起伏は取りこぼすので実際より小さく出る**（UIに注記済み） |
 | 原本は無加工でR2に保存 | 表示用1600px・サムネ400pxを別途生成 |
 | `run_worker_first = true` | `[assets]` は既定でアセットをWorkerより先に返し、アプリシェルとJSが誰でも取れてしまう。実際に200が返るのを確認して塞いだ |
+| `preview_urls = false` | Access は workers.dev の本体URLにかかる。Preview URL は対象外なので、開いていると認証を迂回する入口になる |
+| 座標の確定は地名検索でなく標高データ | 地名検索は山頂ではなく代表点を返す（「富士山」の候補に山頂から約10kmの点が並ぶ）。DEMから「標高が一致する局所最高点」を探すほうが確実 |
+| 山頂探索は範囲内の最高点を採らない | 前穂高岳3090mの1500m圏内に奥穂高岳3190mがあり、最高点を採ると隣の峰へ吸着する。CSVの標高値との一致を条件にする |
 | 画像の Cache-Control を `private` | 個人の写真を共有キャッシュに載せない（**SPECの `public` から意図的に変更**） |
-| Worker側でもAccessトークンを検証 | `*.workers.dev` はAccessを適用できない。エッジ認証だけに頼らない |
+| Worker側でもAccessトークンを検証 | Access の設定を外したときや別ホスト名（Preview URL 等）から入られたときに素通りしないため。Cloudflare 自身も workers.dev で Access を使う場合は Worker 側で aud と JWKS を検証するよう案内している |
 | 認証未設定なら503 | 設定漏れで公開される事故を防ぐ（fail closed） |
 | `verified` と `peak_alias` を mountains に追加 | CSVが持っている情報。SPECのDDLには無いが座標確認の運用に必要 |
 
@@ -151,16 +180,24 @@ GET    /img/{thumb|display|original}/:id
 
 ## 5. 認証とデプロイ（詳細は DEPLOY.md）
 
-**前提: Cloudflare に載せたドメインが1つ必要。** `*.workers.dev` には Access を適用できないため。
+**独自ドメインは不要。** `workers.dev` の URL に Cloudflare Access を直接かけられる（Worker の Settings → Domains & Routes → workers.dev の **Enable Cloudflare Access**）。Cloudflare 側も「Access を有効にしたうえで Worker 内で aud と JWKS を検証すること」を案内していて、その検証は `src/lib/access.ts` に実装済み。**追加コードは要らない。**
+
+> Phase 0 の作業時は「`*.workers.dev` には Access を適用できない」という前提で書いていたが、これは誤り。招待制ログインの自前実装も不要。
+
+順番が大事で、**先にデプロイして Worker を作らないと Access を有効にする画面が出ない**。認証が未設定のうちは Worker が全リクエストに 503 を返すので、先にデプロイしても中身は見えない。
 
 1. `wrangler d1 create` / `r2 bucket create` → `database_id` を `wrangler.toml` に貼る
 2. `npm run db:migrate` → `npm run seed`
-3. `wrangler.toml` の `[[routes]]` で独自ドメインを割り当て
-4. Zero Trust → Access → Self-hosted アプリ。Include を **Emails** にして許可者を列挙、ログインは **One-time PIN**、Session Duration は **1 month**
-5. `wrangler secret put` で `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ALLOWED_EMAILS`
-6. `npm run build && npx wrangler deploy`（GitHub Actions は `main` push で自動デプロイ。D1マイグレーションは手動）
+3. `npm run build && npx wrangler deploy` → `https://yamalog.<サブドメイン>.workers.dev` が生える（この時点では503）
+4. Worker の Settings → Domains & Routes → workers.dev の **Enable Cloudflare Access**。**Preview URLs が Disabled になっていることも確認**
+5. Access アプリの Policy で Include を **Emails**、ログインは **One-time PIN**、Session Duration は **1 month**。**AUD Tag** をコピー
+6. `wrangler secret put` で `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ALLOWED_EMAILS`（secret は保存した時点で反映。再デプロイ不要）
 
-**ドメインが無い場合**は Access が使えないので、Worker側だけで招待制ログイン（事前共有パスコード + HMAC署名Cookie + レート制限）を実装する必要がある。未実装。
+`wrangler.toml` は `workers_dev = true` / `preview_urls = false` にしてある。**Preview URL（`<version>-yamalog.<subdomain>.workers.dev`）は Access の対象外**で、開いていると認証を迂回する入口になるため必ず塞いだままにする。
+
+`/api/health` は Worker 側では認証を通していないが、Access がホスト名全体にかかるためエッジで止まる。外形監視を入れるなら Access 側でそのパスに Bypass ポリシーを当てる。
+
+独自ドメインで受けたくなった場合の手順は DEPLOY.md の付録にある。
 
 ### iPhoneのホーム画面
 
@@ -170,14 +207,19 @@ Safari で開いて 共有 → ホーム画面に追加。`display: standalone`�
 
 ## 6. これから決めること・やること
 
-### すぐ決めるべき
+### 決まったこと
 
-1. **`main` をどうするか**（割り勘アプリとの共存 / 別リポジトリへ分離）
-2. **ドメインを用意するか**（Access を使うか、自前ログインを実装するか）
-3. **百名山の座標をどう確定させるか** — 現在の値は暫定で全件 `verified=0`。手元で `npm run seed:coords -- --force`（地理院API）を回すか、`/settings` の地図でピンをドラッグして確認するか。北ア・南アは判定半径1500mなのでズレが誤判定に直結する
+| 論点 | 結論 |
+|---|---|
+| `main` をどうするか | **YamaLog を新リポジトリへ分離**。`sushiking` は触らない（[1章](#main-との関係--別リポジトリへ分離することに決定)に手順） |
+| ドメインを用意するか | **不要**。`workers.dev` に Access を直接かける（[5章](#5-認証とデプロイ詳細は-deploymd)） |
+| 座標をどう確定させるか | **`npm run verify:coords -- --write`**。地理院の標高タイルから山頂を特定する |
 
-### Phase 0 の残り
+### Phase 0 の残り（この順が素直）
 
+1. 新リポジトリへ移す（[1章](#main-との関係--別リポジトリへ分離することに決定)）
+2. `npm run verify:coords -- --write` → `npm run seed:local` で座標を確定
+3. デプロイして Access をかける（[DEPLOY.md](./DEPLOY.md)）
 4. 過去写真の実データ投入（`scripts/bulk-import.ts`、まず `--dry-run` でEXIF充足率を見る）
 5. 投入結果を見て `match_radius_m` をチューニング
 6. 実機 iOS Safari での確認（`backdrop-filter`、`100dvh`、HEICのネイティブデコード分岐、ホーム画面追加）
@@ -195,7 +237,8 @@ GPXインポートとGPX由来統計での上書き（`activities.stats_source` 
 
 ## 7. 既知の制約・注意点
 
-- **百名山の座標は暫定値**（全件 `verified=0`）。国土地理院の地名検索APIがこの作業環境から到達できなかったため、こちらの知識ベースで埋めた。数百m〜1kmずれている可能性がある
+- **百名山の座標は暫定値のまま**（全件 `verified=0`）。地理院のホストがこの作業環境から遮断されていて確定できていない。数百m〜1kmずれている可能性がある。手元で `npm run verify:coords -- --write` を回せば確定する（DEM から山頂を特定して `verified=1` にする。所要2〜3分）
+- **`npm run seed:coords`（地名検索API）を単独で信用しない。** 地名検索は山頂ではなく代表点を返す。「富士山」の候補には山頂から約10km離れた鳴沢村の点や各地の「小富士山」「富士山駅」が並ぶ。完全一致 + 既存座標からの距離で絞る実装に直したが、座標の確定には `verify:coords` を使うこと
 - **実機 iOS Safari 未検証**（環境にSafariが無い）。検証はChromiumのモバイルエミュレーション
 - **地図タイル未描画**（環境から国土地理院に到達できない）。ピンと軌跡の座標は正しいことを確認済み
 - **ブラウザからの取り込みは一度に60枚まで**（原本＋表示用＋サムネをメモリに抱えるため）。数千枚はCLI
@@ -223,7 +266,9 @@ npm test                   # ユニットテスト35件
 npm run typecheck          # Worker / web / scripts の3プロジェクト
 
 # データ
-npm run seed:coords -- --force   # 地理院APIで座標を再取得
+npm run verify:coords            # 座標をDEMで検証（書き込まない）
+npm run verify:coords -- --write # 山頂に寄せて verified=1 にする
+npm run seed:coords -- --force   # 地名検索APIで再取得（代表点。確定には使わない）
 npm run bulk-import -- ~/Pictures/yama --contributor "自分" --dry-run
 npm run build:demo         # 単一HTMLデモ → dist/demo/yamalog-demo.html
 npm run icons              # ホーム画面アイコン再生成
@@ -241,6 +286,7 @@ npm run build && npx wrangler deploy
 | UIの決まり | `DESIGN.md`（**UI実装前に必読**）、`web/src/styles/tokens.css` |
 | 距離・補間・統計のロジック | `src/lib/geo.ts` / `interpolate.ts` / `stats.ts` + 各 `.test.ts` |
 | 認証 | `src/lib/access.ts` / `src/index.ts` のミドルウェア / `DEPLOY.md` |
+| 座標の確定 | `scripts/verify-coords.ts` / `scripts/lib/dem.ts` + `dem.test.ts` |
 | 取り込みの流れ | `web/src/lib/photo-pipeline.ts`（ブラウザ側）→ `src/routes/photos.ts`（Worker側） |
 | 未分類トレイの動き | `web/src/pages/Inbox.tsx` |
 | デモの仕組み | `web/src/demo/mock-api.ts` |

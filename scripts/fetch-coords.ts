@@ -5,34 +5,48 @@
  *   npx tsx scripts/fetch-coords.ts --force    # 既存値も上書き
  *   npx tsx scripts/fetch-coords.ts --dry-run  # 書き込まず結果だけ表示
  *
- * 注意: 地名検索は山頂ではなく代表点を返す場合があり、数百m〜1kmずれることがある。
- * 取得後は必ず /settings の山マスタ編集画面で目視確認し、verified を 1 にすること。
- * 北アルプス・南アルプスは match_radius_m が 1500m なので、このズレが誤判定に直結する。
+ * **座標の一括確定には scripts/verify-coords.ts のほうを使うこと。**
+ * 地名検索は山頂ではなく地名の代表点を返す。「富士山」で引くと山梨県鳴沢村の点
+ * （山頂から約10km）や各地の「小富士山」「富士山駅」まで並ぶので、候補の選び方を
+ * 誤ると今の値より悪化する。ここでは完全一致 + 既存座標からの距離で絞っているが、
+ * それでも代表点であることに変わりはない。
+ *
+ * こちらは座標が空の山を埋める用途。取得後は verify-coords.ts か
+ * /settings の山マスタ編集画面で必ず確認し、verified を 1 にすること。
+ * 北アルプス・南アルプスは match_radius_m が 1500m なので、ズレが誤判定に直結する。
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { toCsv, toRecords } from './lib/csv';
+import { pickBestFeature, type GsiFeature } from './lib/gsi-search';
 
 const CSV_PATH = resolve(process.cwd(), 'seeds/hyakumeizan.csv');
 const ENDPOINT = 'https://msearch.gsi.go.jp/address-search/AddressSearch';
 
-interface GsiFeature {
-  geometry?: { coordinates?: [number, number] };
-  properties?: { title?: string; addressCode?: string };
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function search(query: string): Promise<{ lat: number; lng: number; title: string } | null> {
+interface Found {
+  lat: number;
+  lng: number;
+  title: string;
+  reason: string;
+}
+
+async function search(
+  query: string,
+  near: { lat: number; lng: number } | null,
+): Promise<{ found: Found | null; reason: string }> {
   const res = await fetch(`${ENDPOINT}?q=${encodeURIComponent(query)}`, {
     headers: { 'User-Agent': 'yamalog-seed-script' },
   });
   if (!res.ok) throw new Error(`GSI search failed: ${res.status} ${res.statusText}`);
   const features = (await res.json()) as GsiFeature[];
-  const hit = features.find((f) => Array.isArray(f.geometry?.coordinates));
-  if (!hit?.geometry?.coordinates) return null;
-  const [lng, lat] = hit.geometry.coordinates;
-  return { lat, lng, title: hit.properties?.title ?? query };
+  const picked = pickBestFeature(features, { query, near });
+  if (!picked.best) return { found: null, reason: picked.reason };
+  return {
+    found: { lat: picked.best.lat, lng: picked.best.lng, title: picked.best.title, reason: picked.reason },
+    reason: picked.reason,
+  };
 }
 
 async function main() {
@@ -61,14 +75,24 @@ async function main() {
     const hasCoord = rec.lat.trim() !== '' && rec.lng.trim() !== '';
     if (hasCoord && !force) continue;
 
+    // 既存座標があれば、同名の別地点を弾くための手がかりに使う
+    const near =
+      hasCoord && Number.isFinite(Number(rec.lat)) && Number.isFinite(Number(rec.lng))
+        ? { lat: Number(rec.lat), lng: Number(rec.lng) }
+        : null;
+
     // peak_alias（実際の最高峰名）があればそちらを優先して問い合わせる
     const queries = [rec.peak_alias, rec.name].filter((q): q is string => !!q && q.trim() !== '');
-    let found: { lat: number; lng: number; title: string } | null = null;
+    let found: Found | null = null;
+    let lastReason = '問い合わせていません';
     for (const q of queries) {
       try {
-        found = await search(q);
+        const r = await search(q, near);
+        lastReason = r.reason;
+        found = r.found;
       } catch (e) {
-        console.error(`  ! ${rec.name}: ${(e as Error).message}`);
+        lastReason = (e as Error).message;
+        console.error(`  ! ${rec.name}: ${lastReason}`);
       }
       if (found) break;
       await sleep(200);
@@ -77,12 +101,14 @@ async function main() {
     if (found) {
       rec.lat = found.lat.toFixed(6);
       rec.lng = found.lng.toFixed(6);
-      rec.verified = '0'; // 取得しただけ。目視確認はこれから
+      rec.verified = '0'; // 取得しただけ。山頂かどうかは未確認
       filled++;
-      console.log(`  ✓ ${rec.id.padStart(3)} ${rec.name} → ${rec.lat},${rec.lng} (${found.title})`);
+      console.log(
+        `  ✓ ${rec.id.padStart(3)} ${rec.name} → ${rec.lat},${rec.lng} (${found.title} / ${found.reason})`,
+      );
     } else {
       missed++;
-      console.log(`  × ${rec.id.padStart(3)} ${rec.name} → 見つからず。手動で入力してください`);
+      console.log(`  × ${rec.id.padStart(3)} ${rec.name} → ${lastReason}`);
     }
     await sleep(300); // 地理院APIへの負荷を抑える
   }
@@ -93,7 +119,8 @@ async function main() {
     return;
   }
   await writeFile(CSV_PATH, toCsv(header, records), 'utf8');
-  console.log(`${CSV_PATH} を更新しました。座標は必ず地理院地図で目視確認してください。`);
+  console.log(`${CSV_PATH} を更新しました。`);
+  console.log('地名検索の値は代表点です。npm run verify:coords で山頂に寄せてください。');
 }
 
 main().catch((e) => {

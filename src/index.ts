@@ -13,13 +13,17 @@ type AppEnv = { Bindings: Env; Variables: { userEmail: string } };
 
 const app = new Hono<AppEnv>();
 
-/** 死活監視用。ここだけ認証を通さない（内容も持たない） */
+/**
+ * 死活監視用。Worker 側では認証を通さない（内容も持たない）。
+ * ただし Access をホスト名全体にかけている場合はエッジで止まる。
+ * 外形監視を入れるなら Access 側でこのパスに Bypass ポリシーを当てる。
+ */
 app.get('/api/health', (c) => c.json({ ok: true }));
 
 /**
  * Cloudflare Access の検証。
  *
- * Access はエッジで認証するが、`*.workers.dev` を直接叩かれると迂回されうるので、
+ * Access はエッジで認証するが、設定変更や別ホスト名からの流入で迂回されうるので、
  * Worker 側でも署名・aud・有効期限・メール許可リストを必ず検証する。
  * 設定が欠けている場合は開けっ放しにせず 503 で閉じる。
  */
@@ -60,7 +64,7 @@ app.use('*', async (c, next) => {
 <div style="font:400 17px/1.47 system-ui,-apple-system,sans-serif;color:#1d1d1f;max-width:34em;margin:18vh auto;padding:0 24px">
   <h1 style="font-size:28px;font-weight:600;letter-spacing:-.374px;margin:0 0 8px">サインインが必要です</h1>
   <p style="color:#7a7a7a;font-size:14px">${result.reason}</p>
-  <p style="color:#7a7a7a;font-size:14px">許可されたアカウントで、Cloudflare Access を設定したドメインからアクセスしてください。</p>
+  <p style="color:#7a7a7a;font-size:14px">許可されたアカウントで、Cloudflare Access を設定した URL からアクセスしてください。</p>
 </div>`,
         result.status,
       );
