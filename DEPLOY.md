@@ -4,8 +4,12 @@ Cloudflare Workers に載せ、**自分が指定したメールアドレスだ�
 
 > **デプロイ済み（2026-08-13）**: <https://yamalog.tiyg-hy-3.workers.dev>
 > 画像は D1 に保存する構成（`PHOTO_STORAGE="d1"`、原本は保存しない）なので R2 は不要。
-> 残っているのは[手順4](#4-workersdev-に-cloudflare-access-をかける)（Access）と[手順5](#5-worker-側にも許可リストを渡す)（secret 3つ）だけ。
-> それが済むまで Worker は全リクエストに 503 を返すので、中身は誰にも見えない。
+> **Cloudflare Access（One-time PIN / Session 1 month / Emails で1人に限定）と secret 3つも設定済みで、稼働している。**
+> 以下は再構築するときの手順として残す。
+>
+> 現在の設定値のありか:
+> - Worker の Settings → Variables and Secrets に `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` / `ALLOWED_EMAILS` を **Secret 種別**で登録済み（Secret は `wrangler deploy` で消えない。Text 種別だと `[vars]` の内容で上書きされて消えるので注意）
+> - Zero Trust → Access controls → Policies の `yamalog - Production`（Include: Emails）
 
 **独自ドメインは不要。** `workers.dev` の URL に Cloudflare Access を直接かけられる（ダッシュボードの Worker 設定に「Enable Cloudflare Access」がある）。Cloudflare 側の案内も「Access を有効にしたうえで、Worker 内で `aud` と JWKS を使って JWT を検証すること」で、その検証は `src/lib/access.ts` に実装済み。追加のコードは要らない。
 

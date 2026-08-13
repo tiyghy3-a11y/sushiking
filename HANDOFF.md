@@ -1,6 +1,6 @@
 # YamaLog 引き継ぎメモ（Phase 0 時点）
 
-写真のEXIFだけで山行記録を成立させる個人用アーカイブ。SPEC.md の Phase 0 をひととおり実装し、ローカルで動作確認済み。**Cloudflare にデプロイ済み**（<https://yamalog.tiyg-hy-3.workers.dev>）だが、Access と secret が未設定のため全リクエストに503を返す状態。
+写真のEXIFだけで山行記録を成立させる個人用アーカイブ。SPEC.md の Phase 0 をひととおり実装し、ローカルで動作確認済み。**Cloudflare にデプロイ済み・稼働中**（<https://yamalog.tiyg-hy-3.workers.dev>）。Cloudflare Access（One-time PIN / Session 1 month / Emails で限定）と secret 3つも設定済み。
 
 このファイルは別の場所でプランを練るための材料集。仕様の正典は [SPEC.md](./SPEC.md)、UI指針は [DESIGN.md](./DESIGN.md)、デプロイ手順は [DEPLOY.md](./DEPLOY.md)。
 
@@ -80,7 +80,7 @@ UIを1枚のHTML（2.8MB）に固めたもの。API・DB・R2の代わりにペ�
 | 9 | CLI一括投入スクリプト | 完了 |
 | 10 | 過去写真の実データ投入と判定半径チューニング | **未着手**（手元作業） |
 | — | 認証・デプロイ準備（DEPLOY.md） | 完了 |
-| — | Cloudflare へのデプロイ | 完了（<https://yamalog.tiyg-hy-3.workers.dev>。画像は D1 保存＝R2不要。**Access と secret 3つが未設定なので全リクエスト503**） |
+| — | Cloudflare へのデプロイ | 完了（<https://yamalog.tiyg-hy-3.workers.dev>。画像は D1 保存＝R2不要。Access + secret 3つ設定済みで**稼働中**） |
 | — | スマホ最適化・ホーム画面対応 | 完了（実機Safari未検証） |
 
 ### テストと検証
