@@ -134,9 +134,16 @@ async function main() {
   if (!dryRun) {
     const buckets = wrangler(['r2', 'bucket', 'list'], { capture: true, allowFail: true });
     if (buckets.code !== 0) {
-      console.error('  R2 の一覧を取得できませんでした。');
-      console.error('  アカウントで R2 が有効になっていない可能性があります');
-      console.error('  （ダッシュボード → R2 で有効化。支払い方法の登録を求められる場合があります）');
+      // 原因の切り分けに必要なので、wrangler の出力をそのまま見せる
+      console.error('  --- wrangler の出力 ---');
+      if (buckets.stdout.trim()) console.error(indent(buckets.stdout));
+      if (buckets.stderr.trim()) console.error(indent(buckets.stderr));
+      console.error('  -----------------------');
+      console.error('  R2 の一覧を取得できませんでした。よくある原因は2つです:');
+      console.error('   (a) アカウントで R2 がまだ有効化されていない');
+      console.error('       → ダッシュボード左メニューの R2 を開いて有効化する');
+      console.error('   (b) APIトークンに R2 の権限が無い');
+      console.error('       → トークンに Account / Workers R2 Storage / Edit を追加する');
       throw new Error('R2 が使えません');
     }
     if (hasBucket(buckets.stdout, BUCKET_NAME)) console.log('  既にあります');

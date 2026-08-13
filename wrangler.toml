@@ -31,8 +31,8 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "yamalog"
-# `wrangler d1 create yamalog` の出力で置き換える
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+# `wrangler d1 create yamalog` の出力（2026-08-13 に作成したもの）
+database_id = "37b7f592-376e-4abf-bf83-6d90542b9db5"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
