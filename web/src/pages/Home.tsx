@@ -1,42 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { ActivityCard } from '../components/ActivityCard';
-import { MapView, type MapMarker } from '../components/MapView';
-import type { ActivityListItem, Mountain, ProgressSummary } from '../lib/types';
+import type { ActivityListItem, ProgressSummary } from '../lib/types';
 
+/**
+ * ホーム。進捗・直近の山行・山域別の3つだけ。
+ *
+ * 以前は日本全図に百名山のピンを打っていたが、スマホの画面幅では列島全体を
+ * 入れるとピンが重なって読めず、場所を確かめる用途にもならなかったため外した。
+ * 地図は「実際の軌跡が出る場面」（山行詳細・山ページ）に残している。
+ */
 export function Home() {
-  const navigate = useNavigate();
-  const [mountains, setMountains] = useState<Mountain[]>([]);
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [recent, setRecent] = useState<ActivityListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.mountains(), api.progress(), api.activities(3, 0)])
-      .then(([m, p, a]) => {
-        setMountains(m.mountains);
+    Promise.all([api.progress(), api.activities(3, 0)])
+      .then(([p, a]) => {
         setSummary(p);
         setRecent(a.activities);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
-
-  const markers: MapMarker[] = useMemo(
-    () =>
-      mountains.map((m) => ({
-        id: String(m.id),
-        lat: m.lat,
-        lng: m.lng,
-        className: m.climbed ? 'mountain-pin climbed' : 'mountain-pin',
-        title: `${m.name}（${m.elevation}m）`,
-        popupHtml: `<strong>${m.name}</strong><br>${m.elevation}m · ${m.area ?? ''}<br>${
-          m.climbed ? `登頂 ${m.visit_count}回` : '未踏'
-        }`,
-        onClick: () => navigate(`/mountains/${m.id}`),
-      })),
-    [mountains, navigate],
-  );
 
   return (
     <>
@@ -74,12 +61,6 @@ export function Home() {
               {(summary?.photo_count ?? 0).toLocaleString('ja-JP')}枚
             </p>
           </div>
-        </div>
-      </section>
-
-      <section className="section-tight canvas-light">
-        <div className="wrap">
-          <MapView markers={markers} defaultLayer="pale" />
         </div>
       </section>
 

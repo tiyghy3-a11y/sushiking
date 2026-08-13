@@ -95,7 +95,7 @@ export function Inbox() {
             const chosen = selected[key];
             return (
               <div key={key} style={{ marginBottom: 'var(--space-xxl)' }}>
-                <div className="section-head">
+                <div className="section-head stacked">
                   <div>
                     <h2 className="t-section">{g.date ? formatDate(g.date) : '日付不明'}</h2>
                     <p className="t-caption muted">

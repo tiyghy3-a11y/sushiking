@@ -1,8 +1,11 @@
 name: Diagnose
 
 # 本番の Worker で何が起きているかを読むだけのワークフロー。
-# デプロイも設定変更も行わない（GET のみ）。
+# デプロイも設定変更も行わない（参照のみ）。
 # 使い方: Actions → Diagnose → Run workflow
+#
+# 注意: GitHub は「既定ブランチにあるワークフロー」しか手動実行できない。
+# このファイルが既定ブランチに入るまで、Actions の一覧には出てこない。
 on:
   workflow_dispatch:
     inputs:

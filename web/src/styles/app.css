@@ -619,14 +619,17 @@ a.card-flat:active {
   margin-bottom: var(--s3);
 }
 
-/* 狭い画面では、日付が折り返されないよう見出しとアクションを段に分ける */
+/*
+ * ボタンを伴う見出し（.stacked）だけ、狭い画面で段を分ける。
+ * 見出し＋文字リンクは1行に収まるので対象にしない。
+ */
 @media (max-width: 560px) {
-  .section-head {
+  .section-head.stacked {
     flex-direction: column;
     align-items: stretch;
     gap: var(--s2);
   }
-  .section-head > .row {
+  .section-head.stacked > .row {
     justify-content: flex-start;
   }
 }
