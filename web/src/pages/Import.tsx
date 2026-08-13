@@ -79,7 +79,8 @@ export function Import() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [previews, setPreviews] = useState<string[]>([]);
   const [tally, setTally] = useState<Tally | null>(null);
-  const [failures, setFailures] = useState<string[]>([]);
+  /** 失敗した写真そのもの。ファイル名では端末の写真と結び付かないので、画像と再試行ボタンで示す */
+  const [failures, setFailures] = useState<{ file: File; url: string; reason: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -112,12 +113,22 @@ export function Import() {
     if (selected.length > MAX_FILES) return;
 
     previews.forEach((url) => URL.revokeObjectURL(url));
+    failures.forEach((f) => URL.revokeObjectURL(f.url));
     setPreviews([]);
+    setFailures([]);
     setFiles(selected);
     setTally(null);
-    setFailures([]);
     setPhase('idle');
     setProgress({ done: 0, total: selected.length });
+  };
+
+  /** 失敗した分だけをもう一度流す */
+  const retryFailed = () => {
+    const again = failures.map((f) => f.file);
+    failures.forEach((f) => URL.revokeObjectURL(f.url));
+    setFailures([]);
+    setFiles(again);
+    void run(again);
   };
 
   /**
@@ -125,12 +136,12 @@ export function Import() {
    * 全部解析してから送る作りだと、枚数に比例してメモリを食い、iPhone では
    * 途中でタブが落ちて「何も起きない」状態になる。少しずつ解放しながら進める。
    */
-  const run = async () => {
+  const run = async (targets: File[] = files) => {
     setPhase('running');
     setError(null);
     const wakeLock = await acquireWakeLock();
     const totals = emptyTally();
-    const failedNames: string[] = [];
+    const failed: { file: File; url: string; reason: string }[] = [];
     let kept = 0; // 画面に残しているプレビューの数
 
     try {
@@ -150,10 +161,10 @@ export function Import() {
         time_offset_sec: offsetSec,
       });
 
-      setProgress({ done: 0, total: files.length });
+      setProgress({ done: 0, total: targets.length });
 
-      for (let i = 0; i < files.length; i += CHUNK_SIZE) {
-        const chunk = files.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+        const chunk = targets.slice(i, i + CHUNK_SIZE);
 
         // 1. 解析（EXIF抽出・HEIC変換・リサイズ。すべてブラウザ側）
         setStep('解析中');
@@ -163,7 +174,11 @@ export function Import() {
             prepared.push(await preparePhoto(file));
           } catch (e) {
             totals.readFailed++;
-            failedNames.push(file.name);
+            failed.push({
+              file,
+              url: URL.createObjectURL(file),
+              reason: `読み込めませんでした（${(e as Error).message}）`,
+            });
             console.error(file.name, e);
           }
         });
@@ -174,19 +189,20 @@ export function Import() {
         }
 
         // 2. 取り込み済みは投げる前に除外する
-        let targets = prepared;
+        let toUpload = prepared;
         try {
           const { existing } = await api.checkHashes(prepared.map((p) => p.hash));
           const existingSet = new Set(existing);
           totals.duplicated += existingSet.size;
-          targets = prepared.filter((p) => !existingSet.has(p.hash));
+          toUpload = prepared.filter((p) => !existingSet.has(p.hash));
         } catch {
           // 重複チェックに失敗しても送信は続ける（Worker 側でも hash で弾かれる）
         }
 
         // 3. 送信
         setStep('アップロード中');
-        await runPool(targets, UPLOAD_CONCURRENCY, async (item) => {
+        const succeeded = new Set<PreparedPhoto>();
+        await runPool(toUpload, UPLOAD_CONCURRENCY, async (item) => {
           try {
             const res = await withRetry(() =>
               api.upload(
@@ -199,18 +215,27 @@ export function Import() {
               ),
             );
             if (res.skipped) totals.duplicated++;
-            else totals.uploaded++;
+            else {
+              totals.uploaded++;
+              succeeded.add(item);
+            }
           } catch (e) {
             totals.failed++;
-            failedNames.push(item.name);
+            // サムネイルは生成済みなので、それを見せて「この写真」と分かるようにする
+            failed.push({
+              file: item.file,
+              url: URL.createObjectURL(item.thumbBlob),
+              reason: (e as Error).message,
+            });
             console.error(item.name, e);
           }
         });
 
-        // 4. このかたまりで確保したメモリを手放す
+        // 4. このかたまりで確保したメモリを手放す。
+        //    取り込めた写真だけをプレビューに残す（失敗した写真は下の別枠で出す）
         const keepUrls: string[] = [];
         for (const p of prepared) {
-          if (kept < PREVIEW_LIMIT) {
+          if (succeeded.has(p) && kept < PREVIEW_LIMIT) {
             keepUrls.push(p.previewUrl);
             kept++;
           } else {
@@ -220,8 +245,8 @@ export function Import() {
         if (keepUrls.length) setPreviews((prev) => [...prev, ...keepUrls]);
 
         setTally({ ...totals });
-        setFailures([...failedNames]);
-        setProgress({ done: Math.min(i + chunk.length, files.length), total: files.length });
+        setFailures([...failed]);
+        setProgress({ done: Math.min(i + chunk.length, targets.length), total: targets.length });
       }
 
       setPhase('done');
@@ -342,10 +367,15 @@ export function Import() {
 
           <OffsetHelper offsetSec={offsetSec} onChange={setOffsetSec} />
 
-          {phase === 'idle' && files.length > 0 && (
+          {phase === 'idle' && files.length > 0 && !tally && (
             <div style={{ marginTop: 'var(--space-lg)' }}>
               <p className="t-caption muted">{files.length}枚を選択しました。</p>
-              <button type="button" className="btn" style={{ marginTop: 'var(--space-md)' }} onClick={run}>
+              <button
+                type="button"
+                className="btn"
+                style={{ marginTop: 'var(--space-md)' }}
+                onClick={() => void run()}
+              >
                 {files.length}枚を取り込む
               </button>
             </div>
@@ -375,20 +405,37 @@ export function Import() {
               <p className="t-caption muted">
                 EXIF時刻なし {tally.noExifTime}枚 · EXIF座標なし {tally.noCoord}枚
               </p>
-              {failures.length > 0 && (
-                <p className="t-fine muted" style={{ marginTop: 'var(--space-xs)' }}>
-                  失敗: {failures.slice(0, 5).join('、')}
-                  {failures.length > 5 ? ` ほか${failures.length - 5}件` : ''}
-                  （もう一度同じ写真を選び直せば、成功済みの分は自動でスキップされます）
-                </p>
+              {failures.length > 0 && phase !== 'running' && (
+                <div style={{ marginTop: 'var(--space-lg)' }}>
+                  <h3 className="t-tagline">入らなかった写真</h3>
+                  <p className="t-caption muted">{failures[0].reason}</p>
+                  <div className="photo-grid dense" style={{ marginTop: 'var(--space-sm)' }}>
+                    {failures.map((f) => (
+                      <div key={f.url} className="photo-cell">
+                        <img src={f.url} alt="" />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ marginTop: 'var(--space-md)' }}
+                    onClick={retryFailed}
+                  >
+                    この{failures.length}枚をもう一度試す
+                  </button>
+                </div>
               )}
               {previews.length > 0 && (
-                <div className="photo-grid dense" style={{ marginTop: 'var(--space-sm)' }}>
-                  {previews.map((url) => (
-                    <div key={url} className="photo-cell">
-                      <img src={url} alt="" />
-                    </div>
-                  ))}
+                <div style={{ marginTop: 'var(--space-lg)' }}>
+                  {failures.length > 0 && <h3 className="t-tagline">取り込んだ写真</h3>}
+                  <div className="photo-grid dense" style={{ marginTop: 'var(--space-sm)' }}>
+                    {previews.map((url) => (
+                      <div key={url} className="photo-cell">
+                        <img src={url} alt="" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {phase === 'done' && (

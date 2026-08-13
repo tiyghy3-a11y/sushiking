@@ -9,6 +9,13 @@ import type { CoordSource, TimeSource } from './types';
 
 export const DISPLAY_EDGE = 1600;
 export const THUMB_EDGE = 400;
+/**
+ * 表示用1枚のバイト数の上限。
+ * 画像を D1 に入れる構成では1枚 900KB までしか保存できない（src/db/storage.ts）。
+ * 岩肌や樹林のような細部の多い写真は 1600px / 品質0.86 でも超えることがあるので、
+ * 収まるまで画質→寸法の順に落とす。
+ */
+const DISPLAY_BUDGET_BYTES = 800_000;
 
 export interface PreparedPhoto {
   file: File;
@@ -115,6 +122,30 @@ async function resize(drawable: Drawable, edge: number, quality: number): Promis
 }
 
 /**
+ * 上限バイト数に収まるまで、画質を落とし、それでも駄目なら長辺を縮める。
+ * 画質を先に落とすのは、山の写真では解像度のほうが情報量として効くため。
+ */
+async function resizeWithinBudget(
+  drawable: Drawable,
+  edge: number,
+  quality: number,
+  budget: number,
+): Promise<Blob> {
+  let blob = await resize(drawable, edge, quality);
+  for (const q of [0.72, 0.6]) {
+    if (blob.size <= budget) return blob;
+    quality = q;
+    blob = await resize(drawable, edge, quality);
+  }
+  // 品質0.6でも超える場合だけ縮める（長辺1024pxで打ち切る）
+  while (blob.size > budget && edge > 1024) {
+    edge = Math.round(edge * 0.8);
+    blob = await resize(drawable, edge, quality);
+  }
+  return blob;
+}
+
+/**
  * 1ファイルを取り込み可能な形に整える。
  * EXIFが無くても失敗にはしない（欠損は異常系ではなく通常系）。
  */
@@ -150,7 +181,7 @@ export async function preparePhoto(file: File): Promise<PreparedPhoto> {
   const orientation = typeof exif.Orientation === 'number' ? exif.Orientation : 1;
   const drawable = await loadDrawable(await decodableBlob(file), orientation !== 1);
   const [displayBlob, thumbBlob] = await Promise.all([
-    resize(drawable, DISPLAY_EDGE, 0.86),
+    resizeWithinBudget(drawable, DISPLAY_EDGE, 0.86, DISPLAY_BUDGET_BYTES),
     resize(drawable, THUMB_EDGE, 0.78),
   ]);
   drawable.release();

@@ -74,8 +74,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('このアカウントでは利用できません（403）。許可リストを確認してください。');
   }
   if (action === 'error') {
+    // API は {"error": "..."} を返す。そのまま出すと画面に JSON が並ぶので中身だけ取り出す
     const text = await res.text();
-    throw new Error(`${res.status} ${text.slice(0, 300)}`);
+    let message = text.slice(0, 300);
+    try {
+      const body = JSON.parse(text) as { error?: unknown };
+      if (typeof body.error === 'string') message = body.error;
+    } catch {
+      // JSON でなければ生の本文をそのまま使う
+    }
+    throw new Error(`${message}（${res.status}）`);
   }
 
   session.set(false); // 通信できたのでフラグを戻す
